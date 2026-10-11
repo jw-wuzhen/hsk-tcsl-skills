@@ -1,0 +1,13 @@
+node_id,node_type,node_name,level,description
+G001,grammar,时态,HSK1-6,描述动作发生的时间和状态变化
+G002,grammar,语序,HSK1-6,指句子成分排列的规范方式
+G003,grammar,虚词,HSK1-6,如了、的、得、地、了、呢等
+G004,grammar,名词性成分,HSK1-6,包括主语、宾语、定语、状语等
+G005,grammar,动词搭配,HSK1-6,动词与宾语或补语的搭配关系
+G006,grammar,形容词表达,HSK1-6,形容词常见修饰和判断句式
+G007,grammar,因果关系,HSK1-6,表示原因和结果的逻辑句式
+G008,grammar,转折关系,HSK1-6,表示让步、转折、对比
+G009,grammar,并列关系,HSK1-6,表示并列、递进、选择等
+G010,grammar,句式结构,HSK1-6,包括陈述句、疑问句、祈使句等
+G011,grammar,固定搭配,HSK1-6,常见表达和组合方式
+G012,grammar,语义逻辑,HSK1-6,用于分析篇章表达的合理性

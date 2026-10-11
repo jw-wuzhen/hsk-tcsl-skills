@@ -1,0 +1,6 @@
+name: chinesewritingassessment-skill
+version: 1.0.0
+display_name: 中文写作评估技能
+scope: private
+description: 面向外国留学生的综合中文写作评估技能，覆盖语法/语义错误定位、错题归因报告生成、全文评价和HTML教学报告输出，依托HSK词库与国际中文教学标准，提供可解释、可教学、可复用的评估结果。
+author: BLCU TCSL Team (北语信创队)

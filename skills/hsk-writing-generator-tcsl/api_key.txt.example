@@ -1,0 +1,3 @@
+﻿# 将本文件复制为 api_key.txt 并填入你的 DashScope/千问 API 密钥（勿提交真实密钥到公开仓库）
+# 也可使用环境变量 DASHSCOPE_API_KEY / QWEN_API_KEY，或 --api-key 参数
+sk-xxxx

@@ -1,0 +1,988 @@
+# -*- coding: utf-8 -*-
+"""中文写作评估核心引擎。
+
+面向外国留学生中文写作，基于可泛化的规则库完成：
+1. 语法/语义错误定位（量词、虚词、语序、搭配、否定、冗余、篇章衔接等）
+2. 错题归因报告（错误 -> 知识点 -> 学习建议）
+3. 全文评价（六维度评分）
+
+设计原则：
+- 高置信规则直接判错（confidence="高"），不确定的标为“可能问题”（confidence="中”）
+- 正常表达不误判：因果复句“因为…所以…”是合法句式，不报错
+- 规则不依赖外部 API，可在离线环境独立运行
+"""
+from __future__ import annotations
+
+import csv
+import json
+import re
+from pathlib import Path
+
+from html_material import build_html_material, split_sentences
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+REFERENCE_DIR = BASE_DIR / "reference"
+HSK_DIR = REFERENCE_DIR / "hsk_vocabulary"
+GRAMMAR_DIR = REFERENCE_DIR / "grammar_knowledge"
+
+DEFAULT_AUTHORITATIVE_SOURCES = [
+    {"name": "CEFR", "url": "https://coe.int/en/web/common-european-framework-reference-languages"},
+    {"name": "ACTFL", "url": "https://www.actfl.org"},
+    {"name": "HSK / Chinese Testing International", "url": "https://www.chinesetest.cn"},
+    {"name": "中国国际中文教育学会/国际中文教学标准", "url": "https://www.china-language.edu.cn"},
+]
+
+# 词库量词列缺失时补充的常见名词量词（教学常用）
+EXTRA_MEASURE_WORDS = {
+    "书": ["本", "册"], "笔": ["支", "根"], "鱼": ["条", "尾"],
+    "车": ["辆", "台"], "花": ["朵", "束", "枝"], "山": ["座"],
+    "歌": ["首", "支"], "饭": ["顿", "碗", "餐"], "水": ["杯", "瓶", "滴"],
+    "火车": ["列", "趟"], "船": ["艘", "条"], "床": ["张", "铺"],
+    "钱包": ["个", "只"], "电话": ["个", "部", "通"], "故事": ["个", "段"],
+    "面条": ["碗", "盘"], "米饭": ["碗", "份"], "汤": ["碗", "锅"],
+    "可乐": ["瓶", "杯", "罐"], "肉": ["块", "斤"], "葡萄": ["串", "颗", "粒"],
+    "草莓": ["颗", "个"], "汽车": ["辆"], "地铁": ["条", "班"], "公交车": ["辆", "班"],
+    "教室": ["间", "个"], "银行": ["家", "个"], "商店": ["家", "个"],
+    "饭店": ["家", "个"], "图书馆": ["个", "座"], "宿舍": ["间", "个"],
+    "广场": ["个", "座"], "机场": ["个", "座"], "车站": ["个", "座"],
+    "演唱会": ["场", "个"], "晚会": ["场", "个"], "活动": ["场", "个", "项"],
+    "孩子": ["个"], "学生": ["个", "名", "位"], "工人": ["个", "名", "位"],
+    "医生": ["个", "名", "位"], "护士": ["个", "名", "位"], "记者": ["个", "名", "位"],
+    "警察": ["个", "名", "位"], "司机": ["个", "名", "位"], "服务员": ["个", "名", "位"],
+    "演员": ["个", "名", "位"], "歌手": ["个", "名", "位"], "运动员": ["个", "名", "位"],
+    "教授": ["个", "名", "位"], "经理": ["个", "名", "位"], "老板": ["个", "位"],
+    "机会": ["个", "次"], "鸟": ["只", "群"], "兔子": ["只"], "马": ["匹", "群"],
+    "牛": ["头", "群"], "羊": ["只", "群"], "老虎": ["只", "头"], "大象": ["头", "只"],
+    "熊猫": ["只"], "猴子": ["只", "群"], "狮子": ["头", "只"], "骆驼": ["峰", "头"],
+    "星星": ["颗"], "月亮": ["轮", "个"], "太阳": ["个"], "云": ["朵", "片"],
+    "雨": ["场", "阵"], "雪": ["场", "阵"], "风": ["阵", "场"], "雷": ["声", "个"],
+    "路": ["条"], "街": ["条"], "巷": ["条"], "桥": ["座"], "塔": ["座"],
+    "楼": ["栋", "座", "层"], "房子": ["栋", "套", "间"], "屋": ["间"],
+    "门": ["扇", "道"], "窗": ["扇", "个"], "窗户": ["扇", "个"],
+    "灯": ["盏", "个"], "台灯": ["盏", "个"], "电视": ["台", "个"],
+    "空调": ["台", "个"], "冰箱": ["台", "个"], "洗衣机": ["台", "个"],
+    "电脑": ["台", "个"], "手机": ["部", "台", "个"], "相机": ["部", "台"],
+    "机器": ["台", "部"], "发动机": ["台"], "车票": ["张"], "机票": ["张"],
+    "门票": ["张"], "票": ["张"], "发票": ["张"], "地图": ["张", "本"],
+    "照片": ["张", "幅"], "相片": ["张"], "明信片": ["张"], "画": ["幅", "张"],
+    "图画": ["幅", "张"], "报纸": ["份", "张"], "文件": ["份"], "合同": ["份"],
+    "协议": ["份"], "信": ["封"], "邮件": ["封", "封"], "电子邮件": ["封"],
+    "短信": ["条"], "消息": ["条"], "新闻": ["条", "则"], "公告": ["条", "则"],
+    "通知": ["条", "份"], "命令": ["条", "道"], "办法": ["条", "个"],
+    "规定": ["条", "项"], "制度": ["条", "项"], "法律": ["条", "部"],
+    "歌": ["首", "支"], "歌曲": ["首", "支"], "诗": ["首"], "诗篇": ["首"],
+    "词": ["首"], "文章": ["篇", "段"], "作文": ["篇"], "论文": ["篇"],
+    "报告": ["篇", "份"], "总结": ["份", "篇"], "日记": ["篇", "本"],
+    "作业": ["项", "份", "个"], "练习": ["道", "个", "项"], "题目": ["道", "个"],
+    "问题": ["个", "道"], "考试": ["场", "次", "门"], "比赛": ["场", "次", "个"],
+    "游戏": ["个", "场", "局"], "电影": ["部", "场"], "电视剧": ["部", "集"],
+    "课": ["门", "堂", "节"], "课间": ["个"], "假期": ["个", "段"],
+    "小时": ["个"], "星期": ["个"], "月": ["个"], "年": ["个"],
+    "岁": ["个"], "钟头": ["个"], "分钟": ["个"], "秒钟": ["个"],
+    "礼物": ["件", "份", "个"], "纪念品": ["件", "份", "个"],
+    "菜": ["盘", "道", "个"], "蛋糕": ["块", "个"], "面包": ["片", "袋", "块"],
+    "饼干": ["片", "块"], "糖": ["颗", "块"], "巧克力": ["块"],
+    "西瓜": ["个", "颗"], "苹果": ["个", "颗"], "香蕉": ["根", "把"],
+    "鸡蛋": ["个", "打"], "桃": ["个"], "梨": ["个"], "橘子": ["个"],
+    "橙子": ["个"], "葡萄": ["串", "颗"], "草莓": ["颗"],
+    "香烟": ["支", "盒", "包"], "药": ["片", "粒", "盒", "瓶"],
+    "针": ["根", "支"], "线": ["根", "条", "团"], "钉子": ["颗", "个"],
+    "螺丝": ["颗", "个"], "珠子": ["颗", "粒"], "种子": ["颗", "粒"],
+    "子弹": ["颗", "发"], "炮弹": ["枚", "发"], "导弹": ["枚", "发"],
+    "火箭": ["枚", "支"], "卫星": ["颗"], "炸弹": ["枚", "颗"],
+    "奖牌": ["枚", "块"], "奖章": ["枚", "块"], "戒指": ["枚", "个"],
+    "硬币": ["枚", "个"], "金牌": ["枚", "块"], "邮票": ["枚", "张"],
+    "衬衫": ["件"], "毛衣": ["件"], "大衣": ["件"], "外套": ["件"],
+    "裤子": ["条"], "裙子": ["条"], "短裤": ["条"], "袜子": ["双", "只"],
+    "手套": ["双", "副", "只"], "帽子": ["顶", "个"], "围巾": ["条"],
+    "领带": ["条"], "腰带": ["条", "根"], "皮带": ["条", "根"],
+    "毛巾": ["条"], "浴巾": ["条"], "手帕": ["块", "条"], "床单": ["条", "张"],
+    "被子": ["床", "条"], "毯子": ["条", "块"], "枕头": ["个", "只"],
+    "眼镜": ["副", "个"], "太阳镜": ["副"], "耳机": ["副", "对", "个"],
+    "耳环": ["对", "副", "只"], "手镯": ["只", "个", "副"], "项链": ["条"],
+    "手表": ["块", "只"], "表": ["块", "只"], "时钟": ["座", "个"],
+    "钟": ["座", "个"], "闹钟": ["个", "只"], "秤": ["台", "杆"],
+    "尺子": ["把"], "铅笔": ["支", "根"], "钢笔": ["支", "根"],
+    "圆珠笔": ["支", "根"], "毛笔": ["支", "根"], "粉笔": ["支", "根"],
+    "蜡笔": ["支", "盒"], "黑板": ["块"], "白板": ["块"], "橡皮": ["块"],
+    "笔记本": ["本", "个"], "本子": ["本", "个"], "练习本": ["本", "个"],
+    "课本": ["本", "册"], "教材": ["本", "套"], "字典": ["本", "部"],
+    "词典": ["本", "部"], "小说": ["本", "部"], "杂志": ["本", "份"],
+    "刊物": ["本", "期"], "报纸": ["份", "张"], "期刊": ["本", "期"],
+    "信纸": ["张", "封"], "纸": ["张", "包", "盒"], "纸盒": ["个", "盒"],
+    "书包": ["个", "只"], "箱子": ["个", "只"], "行李": ["件", "箱"],
+    "皮箱": ["个", "只"], "口袋": ["个", "只"], "袋子": ["个", "只"],
+    "篮子": ["个", "只"], "筐": ["个", "只"], "桶": ["个", "只"],
+    "盆": ["个", "只"], "缸": ["口", "个"], "罐子": ["个", "只"],
+    "瓶子": ["个", "只"], "杯子": ["个", "只", "杯"], "碗": ["个", "只"],
+    "盘子": ["个", "只"], "碟子": ["个", "只"], "勺子": ["把", "个"],
+    "叉子": ["把", "个"], "筷子": ["双", "根", "支"], "刀": ["把"],
+    "剪刀": ["把"], "锤子": ["把", "个"], "斧头": ["把", "个"],
+    "锯子": ["把", "个"], "钳子": ["把", "个"], "扳手": ["把", "个"],
+    "螺丝刀": ["把", "个"], "电钻": ["台", "个"], "锄头": ["把"],
+    "镐": ["把"], "铁锹": ["把"], "扫帚": ["把"], "拖把": ["把"],
+    "抹布": ["块", "条"], "刷子": ["把", "个"], "梳子": ["把", "个"],
+    "镜子": ["面", "个"], "口红": ["支", "个"], "香水": ["瓶"],
+    "牙刷": ["支", "把"], "牙膏": ["管", "支"], "香皂": ["块"],
+    "肥皂": ["块"], "毛巾": ["条"], "纸巾": ["包", "张"], "卫生纸": ["卷", "包"],
+    "餐巾纸": ["张", "包"], "湿巾": ["包", "张"], "面膜": ["片", "盒"],
+    "洗面奶": ["瓶", "支"], "洗发水": ["瓶"], "沐浴露": ["瓶"],
+    "洗衣粉": ["袋", "盒"], "洗衣液": ["瓶", "袋"], "洗洁精": ["瓶", "桶"],
+    "玻璃": ["块", "扇"], "镜子": ["面"], "门": ["扇"], "窗": ["扇"],
+    "墙": ["面", "堵"], "砖": ["块"], "瓦": ["片", "块"], "木板": ["块"],
+    "钢板": ["块", "张"], "铁": ["块"], "石头": ["块", "颗"], "石子": ["颗"],
+    "沙子": ["粒", "把"], "泥土": ["把", "团"], "土": ["把", "堆"],
+    "灰尘": ["层", "片"], "垃圾": ["堆", "袋"], "堆": ["堆"],
+    "森林": ["片", "座"], "树林": ["片"], "竹子": ["根", "棵"],
+    "草": ["根", "棵", "片"], "花": ["朵", "束", "枝"], "叶子": ["片", "张"],
+    "树叶": ["片", "张"], "树枝": ["根", "条"], "根": ["条", "根"],
+    "树干": ["棵", "根"], "树": ["棵", "株"], "木头": ["块", "根"],
+    "火柴": ["根", "盒"], "蜡烛": ["支", "根"], "香": ["支", "根"],
+    "鞭炮": ["挂", "串", "个"], "烟花": ["朵", "个", "束"],
+    "灯笼": ["个", "盏"], "气球": ["个", "只"], "风筝": ["个", "只"],
+    "玩具": ["个", "件"], "娃娃": ["个", "只"], "积木": ["块", "盒"],
+    "拼图": ["块", "盒"], "卡片": ["张", "盒"], "扑克牌": ["张", "副"],
+    "牌": ["张", "副"], "象棋": ["副", "盘"], "围棋": ["副", "盘"],
+    "棋": ["副", "盘"], "球": ["个", "只"], "足球": ["个", "只"],
+    "篮球": ["个", "只"], "排球": ["个", "只"], "乒乓球": ["个", "只"],
+    "羽毛球": ["个", "只"], "网球": ["个", "只"], "棒球": ["个", "只"],
+    "气球": ["个"], "跳绳": ["根", "条"], "毽子": ["个", "只"],
+    "泳镜": ["副"], "泳帽": ["顶", "个"], "泳衣": ["件", "套"],
+    "救生圈": ["个", "只"], "帐篷": ["顶", "个"], "睡袋": ["个", "条"],
+    "背包": ["个", "只"], "登山杖": ["根"], "水壶": ["个", "只"],
+    "望远镜": ["架", "个"], "显微镜": ["台", "架"], "放大镜": ["个", "面"],
+    "照相机": ["台", "架"], "摄像机": ["台", "架"], "录像机": ["台", "部"],
+    "录音机": ["台", "部"], "收音机": ["台", "部"], "电视机": ["台", "部"],
+    "洗衣机": ["台"], "烘干机": ["台"], "洗碗机": ["台"], "烤箱": ["台", "个"],
+    "微波炉": ["台", "个"], "电饭锅": ["个", "只"], "电饭煲": ["个", "只"],
+    "高压锅": ["口", "个"], "平底锅": ["口", "个"], "炒锅": ["口", "个"],
+    "锅": ["口", "个"], "锅盖": ["个", "只"], "水龙头": ["个", "只"],
+    "水槽": ["个"], "浴缸": ["个", "只"], "马桶": ["个", "只"],
+    "便池": ["个"], "淋浴器": ["个", "台"], "热水器": ["台", "个"],
+    "暖气": ["组", "片"], "炉子": ["个", "台"], "火炉": ["个", "座"],
+    "壁炉": ["个", "座"], "火": ["把", "团", "堆"], "火焰": ["团", "束"],
+    "烟": ["缕", "团", "股"], "气": ["股", "团"], "雾": ["场", "团"],
+    "云": ["朵", "片"], "霜": ["层", "场"], "露水": ["滴", "颗"],
+    "冰": ["块", "层"], "雪": ["场", "阵"], "雨": ["场", "阵"],
+    "雷": ["声", "个"], "闪电": ["道", "个"], "彩虹": ["道", "条"],
+    "太阳": ["个"], "月亮": ["轮", "个"], "星星": ["颗"],
+    "流星": ["颗", "道"], "彗星": ["颗"], "银河": ["条"],
+    "岛": ["座", "个"], "半岛": ["个"], "群岛": ["个"],
+    "沙漠": ["片", "个"], "草原": ["片", "块"], "平原": ["片", "块"],
+    "高原": ["块", "片"], "盆地": ["个"], "丘陵": ["片", "座"],
+    "山峰": ["座"], "山谷": ["条", "座"], "峡谷": ["条", "个"],
+    "悬崖": ["座", "面"], "山洞": ["个", "座"], "洞穴": ["个", "座"],
+    "泉": ["眼", "处"], "泉水": ["股", "眼"], "瀑布": ["条", "道"],
+    "湖": ["个", "片"], "湖泊": ["个", "片"], "池塘": ["个", "口"],
+    "水库": ["座", "个"], "井": ["口", "眼"], "沟": ["条", "道"],
+    "渠": ["条", "道"], "田": ["块", "片"], "地": ["块", "片"],
+    "园": ["个", "座"], "花园": ["个", "座"], "菜园": ["个", "块"],
+    "果园": ["个", "片"], "林场": ["个", "片"], "农场": ["个", "座"],
+    "牧场": ["片", "个"], "渔场": ["个", "片"], "煤矿": ["个", "座"],
+    "矿山": ["个", "座"], "矿": ["座", "个"], "矿井": ["口", "个"],
+    "坑": ["个", "口"], "洞": ["个", "口"], "孔": ["个"],
+    "缝": ["条", "道"], "裂缝": ["条", "道"], "口子": ["个", "道"],
+    "伤口": ["个", "处"], "疤": ["块", "个"], "肿瘤": ["个"],
+    "疖": ["个"], "疱": ["个"], "疮": ["个"], "溃疡": ["个", "处"],
+    "炎症": ["处"], "感染": ["处", "个"], "病": ["场", "种", "个"],
+    "疾病": ["种", "场"], "瘟疫": ["场"], "感冒": ["场", "次"],
+    "发烧": ["次", "场"], "咳嗽": ["声", "阵"], "喷嚏": ["个"],
+    "哈欠": ["个"], "瞌睡": ["个"], "觉": ["个", "场"],
+    "梦": ["个", "场"], "噩梦": ["个", "场"], "想法": ["个", "种"],
+    "念头": ["个"], "主意": ["个", "条"], "办法": ["条", "个"],
+    "方式": ["种", "个"], "方法": ["种", "个", "套"], "途径": ["条", "种"],
+    "手段": ["种", "个"], "措施": ["项", "条", "个"], "方案": ["个", "套"],
+    "计划": ["个", "项"], "规划": ["项", "个"], "安排": ["个", "项"],
+    "部署": ["个", "项"], "工程": ["个", "项"], "项目": ["个", "项"],
+    "任务": ["个", "项"], "使命": ["个", "项"], "工作": ["份", "项"],
+    "职位": ["个", "份"], "岗位": ["个", "处"], "职业": ["个", "种"],
+    "行业": ["个", "种"], "产业": ["个", "种"], "企业": ["家", "个"],
+    "公司": ["家", "个"], "工厂": ["家", "座"], "车间": ["个", "间"],
+    "商店": ["家", "个"], "超市": ["家", "个"], "商场": ["家", "座"],
+    "市场": ["个", "座"], "集市": ["个", "场"], "庙会": ["场", "个"],
+    "博览会": ["届", "场"], "展览会": ["场", "个"], "展览": ["场", "个"],
+    "交易会": ["届", "场"], "招聘会": ["场", "个"], "洽谈会": ["场", "个"],
+    "会议": ["场", "个", "届"], "大会": ["场", "届"], "代表大会": ["届", "场"],
+    "座谈会": ["场", "个"], "研讨会": ["场", "个"], "论坛": ["场", "个"],
+    "峰会": ["届", "场"], "酒会": ["场", "个"], "晚会": ["场", "个"],
+    "音乐会": ["场", "个"], "演唱会": ["场", "个"], "舞会": ["场", "个"],
+    "宴会": ["场", "个"], "聚餐": ["次", "场"], "饭局": ["个", "场"],
+    "聚会": ["次", "场", "个"], "派对": ["个", "场"], "婚礼": ["场", "个"],
+    "葬礼": ["场", "个"], "仪式": ["场", "个", "项"], "典礼": ["场", "个"],
+    "开幕式": ["场", "个"], "闭幕式": ["场", "个"], "剪彩": ["次"],
+    "演出": ["场", "台"], "表演": ["场", "个", "台"], "节目": ["个", "台", "场"],
+    "杂技": ["场", "台"], "魔术": ["个", "场"], "相声": ["段", "个"],
+    "小品": ["个", "段"], "话剧": ["台", "场", "出"], "歌剧": ["部", "场", "台"],
+    "舞剧": ["部", "场", "台"], "京剧": ["场", "出", "台"], "戏": ["场", "出", "台"],
+    "电影": ["部", "场"], "影片": ["部", "场"], "纪录片": ["部", "集"],
+    "动画片": ["部", "集"], "电视剧": ["部", "集"], "连续剧": ["部", "集"],
+    "广播剧": ["部", "集"], "戏曲": ["出", "场"], "木偶戏": ["场", "出"],
+    "皮影戏": ["场", "出"], "哑剧": ["场", "出"], "舞蹈": ["场", "支"],
+    "芭蕾舞": ["场", "支"], "民族舞": ["场", "支"], "现代舞": ["场", "支"],
+    "交谊舞": ["场", "支"], "广场舞": ["场", "支"], "迪斯科": ["场"],
+    "音乐": ["首", "段", "支"], "乐曲": ["首", "支"], "曲子": ["首", "支"],
+    "旋律": ["段", "支"], "节奏": ["个", "种"], "拍子": ["个"],
+    "歌": ["首", "支"], "歌曲": ["首", "支"], "民歌": ["首", "支"],
+    "流行歌曲": ["首", "支"], "古典音乐": ["首", "段"], "摇滚乐": ["首", "支"],
+    "爵士乐": ["首", "支"], "交响乐": ["部", "场"], "协奏曲": ["部", "首"],
+    "奏鸣曲": ["部", "首"], "小夜曲": ["首", "支"], "摇篮曲": ["首", "支"],
+    "情歌": ["首", "支"], "军歌": ["首", "支"], "校歌": ["首", "支"],
+    "国歌": ["首", "支"], "颂歌": ["首", "支"], "赞歌": ["首", "支"],
+    "诗歌": ["首", "篇"], "散文": ["篇"], "随笔": ["篇"], "杂文": ["篇"],
+    "评论": ["篇", "条"], "社论": ["篇"], "通讯": ["篇", "条"], "报道": ["篇", "条"],
+    "采访": ["次", "场"], "访谈": ["次", "场"], "对话": ["次", "场"],
+    "谈判": ["轮", "次"], "争论": ["场", "次"], "争吵": ["场", "次"],
+    "吵架": ["场", "次"], "打架": ["场", "次"], "仗": ["场", "次"],
+    "战争": ["场", "次"], "战役": ["场", "次"], "战斗": ["场", "次"],
+    "冲突": ["场", "次"], "纠纷": ["起", "场"], "官司": ["场", "起"],
+    "案件": ["起", "宗", "个"], "案子": ["起", "个"], "事故": ["起", "场", "个"],
+    "车祸": ["起", "场"], "火灾": ["起", "场"], "水灾": ["场", "次"],
+    "旱灾": ["场", "次"], "地震": ["次", "场"], "海啸": ["场", "次"],
+    "台风": ["场", "次"], "飓风": ["场", "次"], "龙卷风": ["场", "次"],
+    "暴雨": ["场", "阵"], "洪水": ["场", "次"], "泥石流": ["场", "次"],
+    "山崩": ["次"], "雪崩": ["场", "次"], "火山爆发": ["次", "场"],
+    "爆炸": ["起", "次", "声"], "火灾": ["起", "场"], "火警": ["次"],
+    "警报": ["声", "次"], "警笛": ["声", "阵"], "汽笛": ["声", "阵"],
+    "哨声": ["声", "阵"], "枪声": ["声", "阵"], "炮声": ["声", "阵"],
+    "雷声": ["声", "阵"], "掌声": ["阵", "片"], "欢呼声": ["阵", "片"],
+    "笑声": ["阵", "片", "串"], "哭声": ["阵", "片"], "喊声": ["声", "阵"],
+    "叫声": ["声", "阵"], "噪声": ["阵", "片"], "噪音": ["阵", "片"],
+    "声音": ["个", "种", "阵"], "响": ["声"], "话": ["句", "番", "席"],
+    "话语": ["番", "段"], "言": ["句", "番"], "语": ["句", "段"],
+    "词": ["个", "组"], "词语": ["个", "组"], "词汇": ["个", "套"],
+    "句子": ["个", "句"], "句": ["句"], "段落": ["个", "段"], "段": ["段"],
+    "章节": ["章", "节"], "章": ["章"], "节": ["节"], "页": ["页"],
+    "行": ["行"], "篇": ["篇"], "首": ["首"], "幅": ["幅"], "张": ["张"],
+    "块": ["块"], "条": ["条"], "件": ["件"], "个": ["个"],
+    "只": ["只"], "头": ["头"], "匹": ["匹"], "辆": ["辆"],
+    "架": ["架"], "艘": ["艘"], "列": ["列"], "台": ["台"],
+    "部": ["部"], "座": ["座"], "间": ["间"], "所": ["所"],
+    "家": ["家"], "栋": ["栋"], "幢": ["幢"], "层": ["层"],
+    "面": ["面"], "扇": ["扇"], "道": ["道"], "堵": ["堵"],
+    "根": ["根"], "支": ["支"], "枝": ["枝"], "杆": ["杆"],
+    "株": ["株"], "棵": ["棵"], "朵": ["朵"], "片": ["片"],
+    "颗": ["颗"], "粒": ["粒"], "枚": ["枚"], "块": ["块"],
+    "堆": ["堆"], "群": ["群"], "队": ["队"], "排": ["排"],
+    "行": ["行"], "列": ["列"], "串": ["串"], "挂": ["挂"],
+    "双": ["双"], "对": ["对"], "副": ["副"], "套": ["套"],
+    "组": ["组"], "批": ["批"], "拨": ["拨"], "帮": ["帮"],
+    "伙": ["伙"], "窝": ["窝"], "巢": ["巢"], "篇": ["篇"],
+    "本": ["本"], "册": ["册"], "卷": ["卷"], "部": ["部"],
+    "集": ["集"], "期": ["期"], "号": ["号"], "版": ["版"],
+    "份": ["份"], "张": ["张"], "封": ["封"], "件": ["件"],
+    "宗": ["宗"], "起": ["起"], "场": ["场"], "次": ["次"],
+    "回": ["回"], "趟": ["趟"], "遍": ["遍"], "番": ["番"],
+    "顿": ["顿"], "餐": ["餐"], "碗": ["碗"], "盘": ["盘"],
+    "碟": ["碟"], "杯": ["杯"], "壶": ["壶"], "瓶": ["瓶"],
+    "罐": ["罐"], "桶": ["桶"], "缸": ["缸"], "坛": ["坛"],
+    "锅": ["锅"], "勺": ["勺"], "把": ["把"], "撮": ["撮"],
+    "捏": ["捏"], "捆": ["捆"], "扎": ["扎"], "束": ["束"],
+    "包": ["包"], "袋": ["袋"], "盒": ["盒"], "箱": ["箱"],
+    "筐": ["筐"], "篓": ["篓"], "篮": ["篮"], "兜": ["兜"],
+    "网": ["网"], "笼": ["笼"], "圈": ["圈"], "环": ["环"],
+    "滴": ["滴"], "点": ["点"], "些": ["些"], "丝": ["丝"],
+    "缕": ["缕"], "股": ["股"], "团": ["团"], "块": ["块"],
+    "摊": ["摊"], "汪": ["汪"], "潭": ["潭"], "池": ["池"],
+    "池子": ["个"], "畦": ["畦"], "垄": ["垄"], "垅": ["垅"],
+    "块": ["块"], "方": ["方"], "亩": ["亩"], "顷": ["顷"],
+    "分": ["分"], "公顷": ["公顷"], "平方公里": ["平方公里"],
+}
+
+# 单字量词集合（用于“数字+量词+名词”与“数字+名词”识别）
+MEASURE_CHARS = set("个只本张封辆台位支间座条件双杯瓶家棵朵片块群队套篇首页层排行列门节顿碗盒包袋顶副对枚粒颗幅盏扇栋户份部艘架列趟场次回遍番层叠束扎捆撮捏滴丝缕股团摊汪潭池畦垄亩顷分")
+
+# 常见单音节形容词 + 名词性动词的错误搭配（“很大学习”类）
+BAD_ADJ_VERB = re.compile(
+    r"(?<!的)很(大|小|多|少|高|低|好|坏|快|慢|难|容易|贵|便宜|长|短|新|旧|远|近|忙|累|冷|热|脏|干净|漂亮|聪明|认真|努力|高兴|难过|开心|重要|方便|安静|热闹|舒服|健康|幸福|快乐|简单|复杂|清楚|正确|错误)"
+    r"(学习|工作|作业|读书|写作|运动|练习|睡觉|吃饭|游戏|生活|跑步|游泳|唱歌|跳舞|画画)"
+)
+
+# “的”误用为“地”：情态词 + 的 + 动作动词
+DE_AS_DI = re.compile(
+    r"(高兴|难过|伤心|快乐|开心|激动|兴奋|紧张|害怕|生气|认真|努力|仔细|慢慢|快快|常常|忽然|突然|大声|小声|轻轻|飞快|慢慢)"
+    r"的(哭|笑|跑|走|说|做|学|写|吃|喝|看|听|来|去|玩|打|跳|飞|唱|读|回答|工作|学习|睡觉|起床|读书|写字|唱歌|跳舞|跑步|游泳)"
+)
+
+# “的”误用为“得”：动词 + 的 + 程度/结果补语
+DE_AS_DE = re.compile(
+    r"(跑|走|说|做|学|写|吃|喝|看|听|玩|打|跳|飞|哭|笑|唱|读|讲|睡|回答)"
+    r"的(很|太|非常|十分|特别|不|好|快|慢|多|少|清楚|认真|努力|开心|难过|漂亮|干净|整齐|大声|小声|流利|标准)"
+)
+
+# 缺结构助词“的”：这里/那里 + 名词
+ZHELI_NOUN = re.compile(r"(这里|那里)(生活|天气|环境|风景|文化|历史|学校|城市|国家|房间|风景|气候|条件|情况)")
+
+# 缺领属“的”：他/她 + 具体名词
+TA_NOUN = re.compile(r"(他|她)(书|笔|信|手机|电脑|车|房间|名字|书包|衣服|鞋|帽子|眼镜|手表|钱包|钥匙|作业|工作|电话|号码|学校|猫|狗|桌子|椅子|电脑|手机)")
+
+# 否定误用
+NO_NOT_HAVE = re.compile(r"不有|没是|不没有|没不有")
+
+# “是”冗余：我是很高兴
+SHI_REDUNDANT = re.compile(r"(我|你|他|她|我们|你们|他们)是(很|太|非常|十分|特别|真的)")
+
+# 重复冗余
+DOUBLE_REDUNDANT = re.compile(r"了了|的的|地地|得得|是是|在在|有有|把把|被被|很很|非非常")
+
+# 语序问题：动词短语 + 在 + 地点 置于句尾（“我学习中文在图书馆”）
+LOCATION_ORDER = re.compile(r"([\u4e00-\u9fff]{2,8})(在[\u4e00-\u9fff]{2,6})$")
+STICKY_VERBS = {"住", "放", "坐", "站", "躺", "挂", "贴", "停", "存", "留", "躲", "藏"}
+
+# 语义协调性提示（可能问题）
+EMOTION_CRY = re.compile(r"(高兴|难过|伤心|感动|兴奋|激动|开心|生气)地哭(了)?")
+
+# 数字/数量词
+NUM_PAT = re.compile(r"[0-9]+|[一二两三四五六七八九十百千]+")
+
+# 连词误用："没+动词+名词+还有+名词"（"还有"应为"和"）
+CONJ_MISUSE = re.compile(r"没(带|吃|喝|买|有|拿|准备|带好|学会|掌握)[\u4e00-\u9fff]{1,4}还有")
+
+# "快要"句末缺"了"：快要+动词/形容词 在句末（无"了"）
+KUAIYAO_LE = re.compile(r"快要[\u4e00-\u9fff]{1,4}$")
+
+# 语序问题："你就+动词+来不及"（应为"动词+就+来不及"）
+JIU_LAI_BUJI = re.compile(r"[你他她它]就[\u4e00-\u9fff]{1,3}来不及")
+
+# 假设+的时候冗余："假如/如果/要是...的时候"
+JIASHI_DEHOU = re.compile(r"(假如|如果|要是|假设)[\u4e00-\u9fff]{2,10}的时候")
+
+PSYCH_VERBS = {"喜欢", "爱", "希望", "想", "觉得", "认为", "知道", "明白", "懂", "了解", "相信", "担心", "害怕"}
+
+
+def normalize_hsk_row(row):
+    word = row.get("word") or row.get("简体") or row.get("词") or row.get("汉字") or ""
+    level = row.get("level") or row.get("等级") or row.get("HSK") or row.get("hsk") or "unknown"
+    pinyin = row.get("pinyin") or row.get("拼音") or row.get("数字拼音") or ""
+    grammar_area = row.get("grammar_area") or row.get("词性") or "unknown"
+    usage_note = row.get("usage_note") or row.get("中文释义") or row.get("释义") or ""
+    en_def = row.get("en_def") or row.get("英文释义") or row.get("english") or row.get("English") or ""
+    measure_words = row.get("量词") or ""
+
+    return {
+        "word": str(word).strip(),
+        "pinyin": str(pinyin).strip(),
+        "grammar_area": str(grammar_area).strip(),
+        "usage_note": str(usage_note).strip(),
+        "en_def": str(en_def).strip(),
+        "level": str(level).strip(),
+        "measure_words": str(measure_words).strip(),
+    }
+
+
+def load_hsk_words():
+    words = []
+    for csv_file in sorted(HSK_DIR.rglob("*.csv")):
+        with csv_file.open("r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                normalized = normalize_hsk_row(row)
+                if not normalized["word"]:
+                    continue
+                words.append(normalized)
+    return words
+
+
+def get_level_summary(hsk_words):
+    summary = {}
+    for word in hsk_words:
+        level = word.get("level", "unknown")
+        summary[level] = summary.get(level, 0) + 1
+    return {k: summary[k] for k in sorted(summary, key=lambda x: (x == "unknown", str(x)))}
+
+
+def get_level_word_samples(hsk_words, max_per_level=10):
+    samples = {}
+    for word in hsk_words:
+        level = word.get("level", "unknown")
+        samples.setdefault(level, []).append(word["word"])
+    return {k: v[:max_per_level] for k, v in samples.items()}
+
+
+def load_grammar_knowledge():
+    grammar_map_path = GRAMMAR_DIR / "grammar_map.json"
+    if grammar_map_path.exists():
+        with grammar_map_path.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    return {"grammar_points": [], "error_to_grammar": {}}
+
+
+def load_reference_sources():
+    """优先从 reference/reference_sources.json 读取权威来源，失败时回退内置。"""
+    ref_path = REFERENCE_DIR / "reference_sources.json"
+    if ref_path.exists():
+        try:
+            with ref_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list) and data:
+                return [{"name": item.get("name", ""), "url": item.get("url", ""), "description": item.get("description", "")} for item in data]
+        except (json.JSONDecodeError, OSError):
+            pass
+    return DEFAULT_AUTHORITATIVE_SOURCES
+
+
+# 时间单位与固定搭配词：数字后接这些词是时间/习惯表达，不算缺量词
+TIME_EXCLUDES = {
+    "点", "分", "秒", "年", "月", "日", "号", "周", "星期", "天", "岁",
+    "刻", "钟", "会儿", "些", "下", "次", "回", "遍", "趟", "番", "起",
+}
+
+
+def build_measure_word_map(hsk_words):
+    """合并词库量词列与补充表，构建 名词 -> 量词列表。
+
+    量词自身（“个/只/本”等）与时间单位不作为“缺量词”检测对象。
+    """
+    mapping = {}
+    for word in hsk_words:
+        w = word.get("word", "")
+        if not w:
+            continue
+        mw = [m.strip() for m in word.get("measure_words", "").split(",") if m.strip()]
+        if mw:
+            mapping.setdefault(w, []).extend(mw)
+    for w, measures in EXTRA_MEASURE_WORDS.items():
+        if w in MEASURE_CHARS or w in TIME_EXCLUDES:
+            continue
+        mapping.setdefault(w, []).extend(measures)
+    return {w: list(dict.fromkeys(ms)) for w, ms in mapping.items()}
+
+
+def _match_measure_noun(tail, max_len=3):
+    """从量词后的文本中按词库最长匹配提取名词（1-3字）。"""
+    for length in range(min(max_len, len(tail)), 0, -1):
+        candidate = tail[:length]
+        if candidate in MEASURE_MAP:
+            return candidate
+    return None
+
+
+def _find_longest_word(words_by_len, text, index):
+    """从 index 位置开始，在词库中做最长匹配。"""
+    for length in words_by_len:
+        if index + length > len(text):
+            continue
+        candidate = text[index:index + length]
+        if candidate in words_by_len[length]:
+            return candidate
+    return None
+
+
+# 常见功能词（虚词/代词/助词），不作为“相关HSK词”展示
+FUNCTION_WORDS = set(
+    "了的得地个只很在是我你他她它我们你们他们这那和与或但而及并也都还又就才再却"
+    "从对向把被给让叫为以于之其所且已曾将会能要该应须刚正着过来说去上下里中外中间"
+    "呢吗吧啊呀哦嗯么怎哪谁几每各某别点些会儿更最太非常十分特别一起怎么什么为什么"
+)
+
+
+def extract_text_words(text, hsk_words):
+    """从文本中提取命中的 HSK 词（最长匹配），返回按原序去重的词列表。"""
+    by_len = {}
+    for w in hsk_words:
+        word = w.get("word", "")
+        if word and word in text:
+            by_len.setdefault(len(word), set()).add(word)
+    lengths = sorted(by_len, reverse=True)
+    found = []
+    seen = set()
+    index = 0
+    while index < len(text):
+        matched = _find_longest_word(by_len, text, index)
+        if matched:
+            if matched not in seen and matched not in FUNCTION_WORDS:
+                seen.add(matched)
+                found.append(matched)
+            index += len(matched)
+        else:
+            index += 1
+    return found
+
+
+def detect_grammar_and_semantic_errors(text: str):
+    """基于规则库检测语法/语义错误。返回结构化问题列表。"""
+    sentences = split_sentences(text)
+    issues = []
+
+    for idx, raw_sentence in enumerate(sentences, start=1):
+        # 去末尾标点，便于正则匹配
+        sentence = re.sub(r"[。！？!?；;]+$", "", raw_sentence).strip()
+        if not sentence:
+            continue
+
+        def add_issue(issue_type, issue, suggestion, fragment=sentence, confidence="高"):
+            issues.append({
+                "sentence_index": idx,
+                "type": issue_type,
+                "issue": issue,
+                "location": f"第{idx}句",
+                "original_fragment": fragment,
+                "confidence": confidence,
+                "suggestion": suggestion,
+            })
+
+        # ---------- 1. 量词缺失 / 量词误用 ----------
+        for num_match in NUM_PAT.finditer(sentence):
+            num_end = num_match.end()
+            tail = sentence[num_end:]
+            # 1a. 数字 + 名词（缺量词）：数字后不是量词开头
+            if tail and tail[0] not in MEASURE_CHARS and len(num_match.group(0)) <= 2:
+                noun = _match_measure_noun(tail)
+                if noun and noun not in TIME_EXCLUDES:
+                    measures = MEASURE_MAP.get(noun, [])
+                    if measures:
+                        fragment = num_match.group(0) + noun
+                        add_issue(
+                            "量词缺失",
+                            f"“{fragment}”缺少量词，数量短语不完整",
+                            f"在数量词后添加合适的量词：如“{fragment}”可改为“{num_match.group(0)}{measures[0]}{noun}”。",
+                            fragment,
+                        )
+            # 1b. 数字 + 量词 + 名词（量词误用）
+            measure_match = re.match(r"([个只本张封辆台位支间座条件双杯瓶家棵朵片块群队套篇首页层排行列门节顿碗盒包袋顶副对枚粒颗幅盏扇栋间户份部艘架列趟场次回遍番])([\u4e00-\u9fff]{1,3})", tail)
+            if measure_match:
+                measure = measure_match.group(1)
+                noun = _match_measure_noun(tail[len(measure):])
+                if noun and noun not in TIME_EXCLUDES:
+                    measures = MEASURE_MAP.get(noun, [])
+                    if measures and measure not in measures and noun not in ("个", "些", "点", "次"):
+                        fragment = num_match.group(0) + measure + noun
+                        suggested = f"{num_match.group(0)}{measures[0]}{noun}"
+                        add_issue(
+                            "量词误用",
+                            f"“{fragment}”中量词“{measure}”与名词“{noun}”不搭配",
+                            f"“{noun}”常用量词为“{('/'.join(measures[:3]))}”，建议改为“{suggested}”。",
+                            fragment,
+                        )
+
+        # ---------- 2. 程度副词 + 形容词 + 名词性动词（“很大学习”类）----------
+        for m in BAD_ADJ_VERB.finditer(sentence):
+            add_issue(
+                "搭配错误",
+                f"“{m.group(0)}”属于搭配不当，程度副词与动词性成分组合不自然",
+                "可改为“很努力地学习”或将形容词改为合适的修饰语。",
+                m.group(0),
+            )
+
+        # ---------- 3. “的/地/得”混用 ----------
+        for m in DE_AS_DI.finditer(sentence):
+            add_issue(
+                "虚词误用",
+                f"“{m.group(0)}”中结构助词“的”使用不当，修饰动词应使用“地”",
+                f"将“{m.group(0)}”中的“的”改为“地”。",
+                m.group(0),
+            )
+        for m in DE_AS_DE.finditer(sentence):
+            add_issue(
+                "虚词误用",
+                f"“{m.group(0)}”中结构助词“的”使用不当，动词后接补语应使用“得”",
+                f"将“{m.group(0)}”中的“的”改为“得”。",
+                m.group(0),
+            )
+
+        # ---------- 4. 缺结构助词“的” ----------
+        for m in ZHELI_NOUN.finditer(sentence):
+            add_issue(
+                "虚词误用",
+                f"“{m.group(0)}”中缺少结构助词“的”，定中关系不完整",
+                f"改为“{m.group(1)}的{m.group(2)}”。",
+                m.group(0),
+            )
+        for m in TA_NOUN.finditer(sentence):
+            add_issue(
+                "虚词误用",
+                f"“{m.group(0)}”中缺少领属标记“的”",
+                f"改为“{m.group(1)}的{m.group(2)}”。",
+                m.group(0),
+            )
+
+        # ---------- 5. 否定词误用 ----------
+        for m in NO_NOT_HAVE.finditer(sentence):
+            replacement = {"不有": "没有", "没是": "不是", "不没有": "有", "没不有": "有"}.get(m.group(0), "没有")
+            add_issue(
+                "用词错误",
+                f"“{m.group(0)}”是否定表达误用",
+                f"改为“{replacement}”。",
+                m.group(0),
+            )
+
+        # ---------- 6. “是”冗余 ----------
+        for m in SHI_REDUNDANT.finditer(sentence):
+            add_issue(
+                "句式冗余",
+                f"“{m.group(0)}”中“是”多余，判断动词与程度副词连用不自然",
+                f"去掉“是”，改为“{m.group(1)}{m.group(2)}…”。",
+                m.group(0),
+            )
+
+        # ---------- 7. 重复冗余 ----------
+        for m in DOUBLE_REDUNDANT.finditer(sentence):
+            add_issue(
+                "冗余重复",
+                f"“{m.group(0)}”存在字词重复",
+                "删除重复成分，保留一个即可。",
+                m.group(0),
+            )
+
+        # ---------- 8. 语序问题（可能问题）----------
+        loc_match = LOCATION_ORDER.search(sentence)
+        if loc_match:
+            prefix = loc_match.group(1)
+            # 排除“住在/坐在/放在”等合法的粘着结构
+            if len(prefix) >= 2 and prefix[-1] not in STICKY_VERBS:
+                add_issue(
+                    "语序问题",
+                    f"“{loc_match.group(0)}”中地点状语通常应放在动词前",
+                    f"建议调整为“在{loc_match.group(2)[1:]}…{prefix}”结构（如“我在图书馆学习中文”）。",
+                    loc_match.group(0),
+                    confidence="中",
+                )
+
+        # ---------- 9. 语义协调性提示（可能问题）----------
+        for m in EMOTION_CRY.finditer(sentence):
+            add_issue(
+                "语义协调",
+                f"“{m.group(0)}”中情绪与动作的语义组合需结合语境判断",
+                "若强调喜极而泣可用“感动得哭了”；一般场景可用“高兴地笑了”。",
+                m.group(0),
+                confidence="中",
+            )
+
+        # ---------- 10. 篇章衔接 ----------
+        if "因为" in sentence and "所以" not in sentence and "因此" not in sentence and "于是" not in sentence:
+            add_issue(
+                "篇章衔接",
+                "使用了原因关联词“因为”，但句内没有明确呈现结果",
+                "补充“所以/因此”引出的结果，或改写为完整的因果关系。",
+                confidence="中",
+            )
+        if "虽然" in sentence and "但是" not in sentence and "可是" not in sentence and "却" not in sentence and "但" not in sentence:
+            add_issue(
+                "篇章衔接",
+                "“虽然”引出让步关系后缺少对应的转折结果",
+                "补充“但是/可是/却”等呼应成分，或改写句子。",
+                confidence="中",
+            )
+
+        # ---------- 11. 连词误用："没+动词+名词+还有+名词" ----------
+        for m in CONJ_MISUSE.finditer(sentence):
+            add_issue(
+                "用词错误",
+                f"“{m.group(0)}”中“还有”使用不当，否定句中并列列举应用“和”",
+                f"将“还有”改为“和”，如“{m.group(0).replace('还有', '和')}”。",
+                m.group(0),
+            )
+
+        # ---------- 12. "快要"句末缺"了" ----------
+        for m in KUAIYAO_LE.finditer(sentence):
+            add_issue(
+                "虚词误用",
+                f"“{m.group(0)}”句末缺少语气助词“了”，表示即将发生的变化不完整",
+                f"在句末添加“了”，改为“{m.group(0)}了”。",
+                m.group(0),
+            )
+
+        # ---------- 13. 语序问题："你就+动词+来不及" ----------
+        for m in JIU_LAI_BUJI.finditer(sentence):
+            verb = re.search(r"就([\u4e00-\u9fff]{1,3})来不及", m.group(0))
+            verb_str = verb.group(1) if verb else "动词"
+            add_issue(
+                "语序问题",
+                f"“{m.group(0)}”中“就”的位置不当，应为“{verb_str}就来不及”",
+                f"调整语序为“{verb_str}就来不及（了）”。",
+                m.group(0),
+                confidence="中",
+            )
+
+        # ---------- 14. 假设+的时候冗余 ----------
+        for m in JIASHI_DEHOU.finditer(sentence):
+            add_issue(
+                "句式冗余",
+                f"“{m.group(0)}”中假设连词与“的时候”语义重复",
+                f"去掉“的时候”改为“{m.group(1)}{m.group(0)[len(m.group(1)):-3]}”，或去掉假设连词保留“的时候”。",
+                m.group(0),
+                confidence="中",
+            )
+
+    if not issues:
+        issues.append({
+            "sentence_index": 0,
+            "type": "无明显错误",
+            "issue": "未检测到明显的语法或语义问题",
+            "location": "全文",
+            "original_fragment": "",
+            "confidence": "高",
+            "suggestion": "建议继续从篇章结构与表达自然度提升。",
+        })
+
+    return issues
+
+
+def _related_words_for_issue(item, sentences, hsk_words):
+    """从错误所在句子提取命中的 HSK 词，作为相关词汇。"""
+    idx = item.get("sentence_index")
+    if idx and 1 <= idx <= len(sentences):
+        sentence_text = sentences[idx - 1]
+    else:
+        sentence_text = item.get("original_fragment", "") or ""
+    words = extract_text_words(sentence_text, hsk_words)
+    return words[:12]
+
+
+def build_attribution_report(issues, hsk_words, text):
+    grammar_map = load_grammar_knowledge()
+    sentences = split_sentences(text)
+    report = []
+    for item in issues:
+        itype = item["type"]
+        knowledge = grammar_map.get("error_to_grammar", {}).get(
+            itype, ["句子结构", "语法基础", "词汇使用"]
+        )
+
+        attribution = {
+            "量词缺失": "学习者对中文量词系统不熟悉，常因母语没有对应量词系统而省略量词。",
+            "量词误用": "学习者使用通用量词“个”替代专用量词，或受母语量词习惯影响选错量词。",
+            "搭配错误": "程度副词与动词性成分的组合受英语表达习惯影响，形成了不自然搭配。",
+            "虚词误用": "对汉语虚词（结构助词“的/地/得”、语气助词“了/吗/呢”等）的功能分工掌握不牢，需要系统学习虚词在不同句式中的用法。",
+            "用词错误": "词义辨析或连词使用不准确，反映出词汇语义网络和汉语搭配习惯尚未建立。",
+            "句式冗余": "句子中存在语义重复或成分冗余（如假设连词与“的时候”连用、判断词“是”多余等），需要精简表达。",
+            "冗余重复": "写作时出现了字词重复，需要加强成稿后的自我检查。",
+            "语序问题": "受母语语序影响，句子成分的排列顺序不符合汉语习惯（如状语位置、副词“就”的位置等），需要加强汉语语序规则训练。",
+            "语义协调": "词汇组合在语义上不够协调，需要结合语境选择合适的搭配。",
+            "篇章衔接": "关联词的使用不完整或机械，需要加强复句与篇章衔接训练。",
+            "逻辑问题": "句子之间的逻辑关系表达不清晰，需要明确因果、转折等关系层次。",
+            "无明显错误": "未发现明显错误，可继续提升表达自然度与篇章组织能力。",
+        }.get(itype, "该问题多出现在词汇选择、语法结构或逻辑组织层面，属于典型中文写作误区。")
+
+        report.append({
+            "issue": item["issue"],
+            "type": itype,
+            "location": item["location"],
+            "knowledge_points": knowledge,
+            "source": "https://www.chinesetest.cn/syllabus",
+            "attribution": attribution,
+            "suggestion": item["suggestion"],
+            "related_hsk_words": _related_words_for_issue(item, sentences, hsk_words),
+            "related_grammar_points": knowledge,
+        })
+    return report
+
+
+def build_knowledge_graph(issues, hsk_words, text):
+    nodes = []
+    edges = []
+    grammar_map = load_grammar_knowledge()
+    word_samples = get_level_word_samples(hsk_words)
+    text_words = extract_text_words(text, hsk_words)
+
+    for level in sorted({word["level"] for word in hsk_words}):
+        level_id = f"level_{level}"
+        nodes.append({
+            "id": level_id,
+            "type": "HSK等级",
+            "label": f"HSK{level}",
+        })
+
+        for word in word_samples.get(level, [])[:10]:
+            word_id = f"word_{level}_{word}"
+            nodes.append({
+                "id": word_id,
+                "type": "HSK词",
+                "label": word,
+                "level": level,
+            })
+            edges.append({
+                "source": level_id,
+                "target": word_id,
+                "relation": "包含",
+            })
+
+    for grammar_name in grammar_map.get("grammar_points", []):
+        grammar_id = f"grammar_{grammar_name}"
+        nodes.append({
+            "id": grammar_id,
+            "type": "语法点",
+            "label": grammar_name,
+        })
+
+    for idx, item in enumerate(issues, start=1):
+        issue_id = f"issue_{idx}"
+        nodes.append({
+            "id": issue_id,
+            "type": "错误节点",
+            "label": item["type"],
+        })
+        related_grammar = grammar_map.get("error_to_grammar", {}).get(item["type"], [])
+        for grammar_name in related_grammar:
+            edges.append({
+                "source": issue_id,
+                "target": f"grammar_{grammar_name}",
+                "relation": "归因",
+            })
+
+    graph = {
+        "nodes": nodes,
+        "edges": edges,
+        "text_words": text_words[:30],
+        "summary": "词汇、语法和作文错误之间的知识图谱结构，体现错误归因与知识点关联。",
+    }
+    return graph
+
+
+def evaluate_overall(text: str, issues, target_level="HSK3"):
+    sentence_count = max(1, len(split_sentences(text)))
+    paragraph_count = max(1, len([p for p in text.splitlines() if p.strip()]))
+    confirmed = sum(1 for item in issues if item["type"] != "无明显错误" and item.get("confidence", "高") == "高")
+    possible = sum(1 for item in issues if item.get("confidence", "高") == "中")
+    weighted_issue = confirmed + possible * 0.5
+
+    # 目标等级越高，语言准确性要求越严
+    level_num = int(re.search(r"\d", str(target_level)).group(0)) if re.search(r"\d", str(target_level)) else 3
+    strictness = 1.0 + max(0, (level_num - 3)) * 0.08 - max(0, (3 - level_num)) * 0.05
+
+    accuracy = max(45, min(98, round((96 - weighted_issue / sentence_count * 45) * (1 / (1 + 0.08 * (strictness - 1))) * strictness)))
+    organization = max(50, min(96, 70 + min(paragraph_count, 5) * 4 - int(weighted_issue) * 3))
+    content = 72 if len(text.strip()) < 80 else min(92, 76 + min(len(text) // 120, 4) * 4)
+    score = round(content * 0.25 + organization * 0.25 + accuracy * 0.35 + 78 * 0.15)
+
+    issue_types = [item["type"] for item in issues if item["type"] != "无明显错误"]
+    if issue_types:
+        logic_note = "整体表达基本清楚，但存在" + "、".join(issue_types[:3]) + "等问题，需针对性训练。"
+    else:
+        logic_note = "整体表达清晰，未发现明显语法或语义问题，可继续提升表达自然度与篇章组织能力。"
+
+    evaluation_dimensions = {
+        "content_and_task_response": {
+            "score": content,
+            "note": f"全文约{len(text)}字，内容信息量和任务完成度需要结合题目要求进一步判断。",
+        },
+        "organization_and_coherence": {
+            "score": organization,
+            "note": f"识别到{paragraph_count}个段落，篇章衔接仍需关注主题推进和关联词使用。",
+        },
+        "language_accuracy_and_range": {
+            "score": accuracy,
+            "note": f"识别到{confirmed}处确定问题、{possible}处可能问题，评分区分了确定错误和可能问题。",
+        },
+        "lexical_and_grammatical_control": {
+            "score": round((accuracy + organization) / 2),
+            "note": f"结合目标 HSK{level_num} 等级，从词汇搭配、虚词使用和复句组织进行分层训练。",
+        },
+    }
+
+    return {
+        "overall_score": score,
+        "target_level": str(target_level),
+        "logic_evaluation": logic_note,
+        "evaluation_dimensions": evaluation_dimensions,
+        "global_suggestions": [
+            "加强主旨句和段落主题句的逻辑组织。",
+            "复习常见搭配与词义辨析，提升表达准确性。",
+            "注意因果、转折、并列关系的分层表达，避免逻辑重叠。",
+            f"可结合 HSK{level_num} 与 CEFR 的语言目标进行分层训练，逐步提升篇章表达稳定性。",
+        ],
+    }
+
+
+def generate_skill_result(text: str, target_level="HSK3", task_type="HSK写作", learner_native_language="英语"):
+    hsk_words = load_hsk_words()
+    global MEASURE_MAP
+    MEASURE_MAP = build_measure_word_map(hsk_words)
+
+    level_summary = get_level_summary(hsk_words)
+    level_samples = get_level_word_samples(hsk_words)
+    issues = detect_grammar_and_semantic_errors(text)
+    attribution_report = build_attribution_report(issues, hsk_words, text)
+    knowledge_graph = build_knowledge_graph(issues, hsk_words, text)
+    overall = evaluate_overall(text, issues, target_level)
+    reference_sources = load_reference_sources()
+    teaching_material_html = build_html_material(text, hsk_words, issues, overall, attribution_report, reference_sources)
+
+    return {
+        "part1_grammar_errors": issues,
+        "part2_attribution_report": attribution_report,
+        "part3_overall_evaluation": overall,
+        "knowledge_graph": knowledge_graph,
+        "reference": "https://www.chinesetest.cn/syllabus",
+        "reference_sources": reference_sources,
+        "vocabulary_coverage": {
+            "total_words": len(hsk_words),
+            "level_summary": level_summary,
+            "sample_words_by_level": level_samples,
+            "coverage_status": "local_hsk_coverage_ready" if hsk_words else "empty",
+        },
+        "skill_summary": {
+            "core_functions": [
+                "语法/语义错误定位",
+                "错题归因报告自动生成",
+                "全文评价",
+            ],
+            "knowledge_base": "HSK 1-6 本地词库 + 语法知识图谱 + 国际中文教学大纲 + CEFR/ACTFL 评估框架",
+            "innovation": "自适应知识图谱 + 词汇等级映射 + 语法归因关联 + 全文能力评估",
+            "target_level": target_level,
+            "task_type": task_type,
+            "learner_native_language": learner_native_language,
+        },
+        "teaching_material_html": teaching_material_html,
+    }
+
+
+# 模块级量词映射（首次调用时初始化）
+MEASURE_MAP = {}
+
+
+def main():
+    """命令行入口：评估中文作文，输出 JSON 结果。
+
+    用法：
+        python3 assess_essay.py --text "作文文本"
+        echo "作文文本" | python3 assess_essay.py
+        python3 assess_essay.py --input essay.txt --output result.json
+    """
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(description="中文写作评估：错误定位、错因归因、全文评价")
+    parser.add_argument("--text", type=str, default=None, help="作文文本（直接传入）")
+    parser.add_argument("--input", type=str, default=None, help="从文件读取作文文本")
+    parser.add_argument("--output", type=str, default=None, help="输出 JSON 到文件（默认输出到 stdout）")
+    parser.add_argument("--hsk-level", type=str, default="HSK3", help="目标 HSK 等级（HSK1-HSK6）")
+    parser.add_argument("--task-type", type=str, default="HSK写作", help="写作任务类型")
+    parser.add_argument("--native-language", type=str, default="英语", help="学习者母语")
+    parser.add_argument("--pretty", action="store_true", help="格式化输出 JSON（缩进）")
+    args = parser.parse_args()
+
+    # 获取作文文本
+    if args.text:
+        text = args.text
+    elif args.input:
+        with open(args.input, "r", encoding="utf-8") as f:
+            text = f.read()
+    elif not sys.stdin.isatty():
+        text = sys.stdin.read()
+    else:
+        parser.error("请通过 --text、--input 或 stdin 提供作文文本")
+
+    text = text.strip()
+    if not text:
+        parser.error("作文文本为空")
+
+    # 执行评估
+    result = generate_skill_result(
+        text,
+        target_level=args.hsk_level,
+        task_type=args.task_type,
+        learner_native_language=args.native_language,
+    )
+
+    # 输出
+    output_str = json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None)
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(output_str)
+        print(f"评估结果已保存到: {args.output}", file=sys.stderr)
+    else:
+        print(output_str)
+
+
+if __name__ == "__main__":
+    main()

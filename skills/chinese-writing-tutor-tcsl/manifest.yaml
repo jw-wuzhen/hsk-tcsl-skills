@@ -1,0 +1,7 @@
+name: chinese-writing-tutor-tcsl
+version: 2.0.0
+display_name: 中文写作导师
+scope: private
+description: Chinese writing tutor for international students. Sentence structure
+  analysis and graded essay recommendation.
+author: BLCU TCSL Team (北语信创队)

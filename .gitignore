@@ -1,0 +1,30 @@
+# ===== 密钥与凭证（绝不提交） =====
+api_key.txt
+dashscope_api_key.txt
+qwen_api_key.txt
+*.key
+.env
+.env.*
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# ===== 打包与临时产物 =====
+*.zip
+*.7z
+*.rar
+*.log
+tmp/
+
+# ===== 本地工作目录（不入库） =====
+ppt_work/
+extracted/
+技术文档输出/
+
+# ===== IDE / 系统 =====
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store

@@ -1,0 +1,9 @@
+name: hsk-conversation-generator-tcsl
+version: 2.0.0
+display_name: HSK对话材料生成器
+scope: private
+description: HSK conversation-material generator for international Chinese learners
+  (TCSL) and teachers. Produces scene dialogue scripts, topic discussion cards (warm-up/core/extension),
+  and role-play task cards for any topic at any level. Level-controlled vocabulary
+  with out-of-syllabus words marked ★; optional English scaffolding for HSK1-3.
+author: BLCU TCSL Team (北语信创队)

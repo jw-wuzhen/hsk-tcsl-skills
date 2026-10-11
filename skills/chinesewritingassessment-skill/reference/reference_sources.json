@@ -1,0 +1,26 @@
+[
+  {
+    "name": "HSK / Chinese Testing International",
+    "category": "official-exam-standard",
+    "url": "https://www.chinesetest.cn/",
+    "description": "HSK 官方平台，适用于汉语水平等级与考试标准的参考。"
+  },
+  {
+    "name": "HSK Development and Standards",
+    "category": "official-exam-standard",
+    "url": "https://www.chinesetest.cn/Development",
+    "description": "HSK 发展与标准信息页面，适用于语言等级和标准说明。"
+  },
+  {
+    "name": "CEFR",
+    "category": "international-language-framework",
+    "url": "https://coe.int/en/web/common-european-framework-reference-languages",
+    "description": "欧洲语言共同参考框架，可用于语言能力对照与写作等级判断。"
+  },
+  {
+    "name": "ACTFL Proficiency Guidelines",
+    "category": "international-language-framework",
+    "url": "https://www.actfl.org/resources/guidelines-and-manuals/actfl-proficiency-guidelines-2012",
+    "description": "美国外语教学协会能力描述框架，可用于语言表现与写作能力评估。"
+  }
+]
