@@ -1,6 +1,6 @@
 ---
 name: hsk-writing-generator-tcsl
-description: "基于新版HSK大纲（2026年7月实施）的写作题目与范文生成器，面向国际中文学习者（TCSL）与教师。覆盖HSK1-6全部写作题型：HSK1-3基础书写练习、HSK4短文写作（≥80字）、HSK5看图作文（≥100字，四格图）+引语作文（≥200字）、HSK6应用文（≥150字）+议论文（≥300字）。任意话题均可处理：先在大纲话题树中定位，再按等级生成写作题目、构思引导问题、可用句型、参考关键词、参考范文（本级词汇撰写，超纲词★标注并附拼音+母语翻译）、教师教学视图。当用户需要HSK写作练习题、布置写作作业、备考模拟练习、参考范文或教师备课材料时调用。 | An HSK writing task & model-essay generator built on the new HSK syllabus (effective July 2026) for international Chinese learners (TCSL) and teachers. Covers all HSK1-6 writing tasks; any topic is supported."
+description: "基于新版HSK大纲（2026年7月实施）的写作题目与范文生成器，面向国际中文学习者（TCSL）与教师。覆盖HSK1-6全部写作题型：HSK1-3基础书写练习、HSK4短文写作（≥80字）、HSK5看图作文（≥100字，四格图）+引语作文（≥200字）、HSK6应用文（≥150字）+议论文（≥300字）。任意话题均可处理：先在大纲话题树中定位，再按等级生成写作题目、构思引导问题、可用句型、参考关键词、参考范文（本级词汇撰写，生词★标注并附拼音+词性+释义+例句）、教师教学视图。当用户需要HSK写作练习题、布置写作作业、备考模拟练习、参考范文或教师备课材料时调用。 | An HSK writing task & model-essay generator built on the new HSK syllabus (effective July 2026) for international Chinese learners (TCSL) and teachers. Covers all HSK1-6 writing tasks; any topic is supported."
 ---
 
 # HSK 写作题目生成器 — TCSL 版 v2.0
@@ -9,7 +9,7 @@ description: "基于新版HSK大纲（2026年7月实施）的写作题目与范�
 
 三大能力：
 1. **写作题目生成**——任意话题、任意等级，生成题目+构思引导+句型+关键词
-2. **参考范文**——话题命中范文库则推荐，未命中则按级控规则现场新写，超纲词★标注
+2. **参考范文**——话题命中范文库则推荐，未命中则按级控规则现场新写，生词★标注
 3. **教师备课视图**——大纲依据、话题树位置、范文结构、评分要点、教学建议
 
 ## Language Rules
@@ -119,7 +119,7 @@ Target users: English-speaking Chinese learners (international students).
 
 修正后**只输出修正版**，不展示原始错误。
 
-### Step 5: 级控检查与超纲词标注
+### Step 5: 级控检查与生词标注
 
 1. 从范文中挑出 10-20 个最没把握的词（高级动词、形容词、抽象名词）以及所有准备标注的词
 2. 运行查词脚本：
@@ -128,7 +128,7 @@ Target users: English-speaking Chinese learners (international students).
    ```
 3. 处理规则：
    - 词的等级 ≤ 学生等级 → 正常使用
-   - 词的等级 > 学生等级，或词表查不到 → 视为**超纲词**：文中用 ★ 包起来（如 ★外滩★），并在【超纲词注释】块给出 拼音 + 母语翻译
+   - 词的等级 > 学生等级，或词表查不到 → 视为**生词**：文中用 ★ 包起来（如 ★真是★），并在【生词表】给出 拼音 + 词性 + 释义 + 原文例句（词性在标注时给出，没有可留空；原文例句留空时脚本自动从范文提取）
    - 结构助词（了/呢/吗/吧/啊）和标点跳过
 4. 句长检查：HSK1 ≤8字、HSK2 ≤14字、HSK3 ≤18字、HSK4 ≤22字、HSK5 ≤28字、HSK6 ≤35字。如不确定，可运行：
    ```bash
@@ -163,10 +163,10 @@ Target users: English-speaking Chinese learners (international students).
      "teaching_info":[["等级","HSK 5（CEFR B1）"],["考试题型","看图作文（≥100字）"],["大纲写作能力","…"],["话题树位置","社会交往 > 公共交通 > 让座"]],
      "structure":"图1（车上人多找座）→ 图2（老奶奶上车没座）→ 图3（小明让座）→ 图4（大家点赞，小明开心）",
      "rubric":["内容完整（四图要素齐全）","语言准确（本级词汇语法）","结构清晰（起因-经过-结果）"],
-     "teaching_tips":["先让学生看漫画编故事，再给范文","★超纲词先讲解再让学生读"],
+     "teaching_tips":["先让学生看漫画编故事，再给范文","★生词先讲解再让学生读"],
      "exam_note":"HSK5 看图作文要求…",
-     "glossary":[{"word":"真是","pinyin":"zhēn shì","meaning":"really; indeed（7级词，示例）"}],
-     "out_of_syllabus_note":"超纲词 x 个已★标注，请先解释再使用"
+     "glossary":[{"word":"真是","pinyin":"zhēn shì","pos":"adv.","meaning":"really; indeed","example":"你真是个懂礼貌的好孩子。"}],
+     "out_of_syllabus_note":"生词 x 个已★标注，请先解释再使用"
    }
    ```
    **注意：缺字段没问题（脚本会跳过空卡片），但题目、题型、字数、结构、评分要点这些核心字段务必填。**
@@ -285,10 +285,10 @@ python3 /mnt/skills/user/hsk-writing-generator-tcsl/v2.0.7/scripts/comic_render.
 <关键词1、关键词2、……>
 
 ### 📝 参考范文（约 xxx 字）
-<标题居中；正文每段首行空两格（日常作文格式）；超纲词★标注>
+<标题居中；正文每段首行空两格（日常作文格式）；生词★标注>
 
-【超纲词注释】（★标记的词超过本等级词汇，请先解释再使用）
-- ★真是★ 拼音：zhēn shì　释义：really; indeed
+【生词表】（★标记的词超过本等级词汇，请先解释再使用；含拼音、词性、释义、原文例句）
+- ★真是★ 拼音：zhēn shì　词性：adv.　释义：really; indeed　例句：你真是个懂礼貌的好孩子。
 
 ### 📄 HTML 学习页
 File: essay_话题_HSKx.html — 从项目文件打开（已自动按 HSK 等级标注拼音与释义，可打印/下载）
@@ -318,7 +318,7 @@ File: essay_话题_HSKx.html — 从项目文件打开（已自动按 HSK 等级
 - <1-2 条，英文或中文按 feedback_language>
 
 【级控检查】
-- 词汇：本级词汇书写，超纲词 x 个已★标注
+- 词汇：本级词汇书写，生词 x 个已★标注
 - 语法：符合本级语法边界
 - 字数：xxx 字（达标/未达标）
 
@@ -330,7 +330,7 @@ File: essay_话题_HSKx.html — 从项目文件打开
 
 ## 通用规则（级控）
 
-1. **词汇边界**：HSK4 范文只用 HSK1-4 词汇，HSK5 只用 HSK1-5，HSK6 只用 HSK1-6；拿不准用 `hsk_lookup.py` 查，查不到即按超纲处理（宁标勿漏）
+1. **词汇边界**：HSK4 范文只用 HSK1-4 词汇，HSK5 只用 HSK1-5，HSK6 只用 HSK1-6；拿不准用 `hsk_lookup.py` 查，查不到即按生词处理（宁标勿漏）
 2. **语法边界**：只用该等级及以下语法点（见 writing_guide.md 第四节）；HSK3 以下不用把字句/被字句，HSK4 以下不用"随着…的发展"类书面框架
 3. **字数达标**：正文达到题型最少字数
 4. **结构完整**：按题型结构组织
@@ -339,7 +339,7 @@ File: essay_话题_HSKx.html — 从项目文件打开
 
 - 输入为空或非中文：用英文请用户给中文
 - 没找到等级：问 "What is your HSK level?"
-- 脚本失败/词表缺失：不阻塞输出，范文照常给出（超纲词按"宁标勿漏"人工判断），并提示"词汇核查暂不可用"
+- 脚本失败/词表缺失：不阻塞输出，范文照常给出（生词按"宁标勿漏"人工判断），并提示"词汇核查暂不可用"
 - 话题不在话题树：映射到最接近的话题支，不报错（见 Feature 1 Step 3）
 - 用户要求改写/润色已有作文：这是"作文批改"需求，本技能不覆盖，礼貌告知（或引导到其他技能）
 - HTML 生成失败：文本视图照常输出，注明"HTML 学习页暂不可用"；绝不编造 HTML、绝不展示原始报错（见 Feature 2 Step 7）

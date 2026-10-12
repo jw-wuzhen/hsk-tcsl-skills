@@ -7,7 +7,7 @@
 生成一份完整、自包含、可直接打印/下载的教学素材 HTML：
 
   - 学生练习版：题目、四格漫画、构思引导、可用句型、参考关键词、写作要求
-  - 教师备课版：教学信息、参考范文（★超纲词+注释表）、范文结构、评分要点、
+  - 教师备课版：教学信息、参考范文（★生词+生词表）、范文结构、评分要点、
     教学建议、级控检查、考试说明
   - 顶部工具条：打印 / 存为 PDF、下载 HTML（@media print 打印友好，A4 可用）
 
@@ -26,7 +26,7 @@
        "question","guiding_questions":[],"patterns":[],"connectors":[],
        "keywords":[],"requirements":[],"teaching_info":[[k,v],...],
        "structure","rubric":[],"teaching_tips":[],"exam_note",
-       "glossary":[{"word","pinyin","meaning"}],"out_of_syllabus_note"}
+       "glossary":[{"word","pinyin","pos","meaning","example"}],"out_of_syllabus_note"}
   --output         输出 HTML 路径（默认 /mnt/user-data/outputs/essay_display.html）
   --hsk-level      HSK 等级（仅用于页头显示）
   --title          标题（无 teacher-json 时的页头标题）
@@ -167,7 +167,7 @@ def essay_chars(paragraphs):
 
 
 def build_essay_html(title, paragraphs, vocab, char_pinyin, expressions):
-    """带 HSK 等级着色 + 拼音 + 好词好句高亮的范文正文 HTML。
+    """带 HSK 等级着色 + 拼音 + 重点词句高亮的范文正文 HTML。
 
     标题居中加粗（essay-title），正文每段首行空两格（essay-para），
     使用楷体书写字体，支持普通/横线纸/方格纸三种展示模式。
@@ -339,15 +339,27 @@ def build_teacher_section(tj, essay_title_html, paras_html, expr_html, paragraph
     blocks.append(card("参考范文", paper_switch + essay_title_html + '<div class="essay" id="essay-block">%s</div>%s' % (paras_html, expr_html), icon="📝 "))
     glossary = tj.get("glossary") or []
     if glossary:
-        g_rows = "".join(
-            '<tr><td class="star">★%s★</td><td>%s</td><td>%s</td></tr>'
-            % (esc(g.get("word", "")), esc(g.get("pinyin", "")), esc(g.get("meaning", "")))
-            for g in glossary
-        )
-        note = tj.get("out_of_syllabus_note") or "超纲词超过本等级词汇，请先解释再使用"
+        body_text = "".join(paragraphs)
+        g_rows = ""
+        for g in glossary:
+            w = g.get("word", "")
+            ex = (g.get("example") or "").strip()
+            if not ex and w:
+                ex = _find_example(w, body_text)
+            if ex:
+                ex_html = _highlight_expr(esc(ex), w)
+            else:
+                ex_html = '<span class="warn">⚠️ 范文中未出现该生词，请检查配置</span>'
+            g_rows += (
+                '<tr><td class="star">★%s★</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
+                % (esc(w), esc(g.get("pinyin", "")), esc(g.get("pos", "") or ""), esc(g.get("meaning", "")), ex_html)
+            )
+        note = tj.get("out_of_syllabus_note") or "生词超过本等级词汇，请先解释再使用"
         blocks.append(
-            '<div class="card white"><div class="card-title">⭐ 超纲词注释</div>'
-            '<div class="note">%s</div><table>%s</table></div>' % (esc(note), g_rows)
+            '<div class="card white"><div class="card-title">📖 生词表</div>'
+            '<div class="note">%s</div>'
+            '<table><tr><th>生词</th><th>拼音</th><th>词性</th><th>释义</th><th>原文例句</th></tr>%s</table></div>'
+            % (esc(note), g_rows)
         )
     if tj.get("structure"):
         blocks.append(card("范文结构", '<div class="para-text">%s</div>' % esc(tj.get("structure")), icon="🧩 "))

@@ -6,7 +6,7 @@ count: 6
 
 # HSK6 应用文 参考范文（6篇）
 
-本文件为范文生成与推荐的参考样例。全部范文按本级词汇书写，不可避免的超纲词已★标注并附注释。生成新范文时，句长、词汇、语法须符合该等级边界（见 writing_guide.md）。
+本文件为范文生成与推荐的参考样例。全部范文按本级词汇书写，不可避免的生词已★标注并附注释。生成新范文时，句长、词汇、语法须符合该等级边界（见 writing_guide.md）。
 
 ## 1. 《招租信息》
 
@@ -14,7 +14,7 @@ count: 6
 
 **关键词**: 招租、位置、交通、面积、家具、租金、押金、联系
 
-**超纲词**: 押一付三 (yā yī fù sān) = one month's deposit plus three months' rent paid in advance；衣柜 (yīguì) = wardrobe / closet；租客 (zūkè) = tenant；租期 (zūqī) = lease period
+**生词**: 押一付三 (yā yī fù sān) = one month's deposit plus three months' rent paid in advance；衣柜 (yīguì) = wardrobe / closet；租客 (zūkè) = tenant；租期 (zūqī) = lease period
 
 > 招租信息
 > 
@@ -33,7 +33,7 @@ count: 6
 
 **关键词**: 招聘、教师、学历、专业、经验、待遇、简历、截止
 
-**超纲词**: 五险一金 (wǔxiǎn yījīn) = five social insurances and housing fund；注明 (zhùmíng) = to note / to indicate clearly；招聘启事 (zhāopìn qǐshì) = job posting / recruitment notice；月薪 (yuèxīn) = monthly salary；面议 (miànyì) = to be discussed in person (salary)
+**生词**: 五险一金 (wǔxiǎn yījīn) = five social insurances and housing fund；注明 (zhùmíng) = to note / to indicate clearly；招聘启事 (zhāopìn qǐshì) = job posting / recruitment notice；月薪 (yuèxīn) = monthly salary；面议 (miànyì) = to be discussed in person (salary)
 
 > 招聘启事
 > 
@@ -81,7 +81,7 @@ count: 6
 
 **关键词**: 通知、举办、演讲、比赛、报名、地点、时间、参加
 
-**超纲词**: 踊跃 (yǒngyuè) = enthusiastically；礼堂 (lǐtáng) = auditorium / hall；风采 (fēngcǎi) = elegance / charm；自拟 (zìnǐ) = to decide by oneself (as a topic)；获奖者 (huòjiǎngzhě) = award winner
+**生词**: 踊跃 (yǒngyuè) = enthusiastically；礼堂 (lǐtáng) = auditorium / hall；风采 (fēngcǎi) = elegance / charm；自拟 (zìnǐ) = to decide by oneself (as a topic)；获奖者 (huòjiǎngzhě) = award winner
 
 > 通知
 > 
@@ -110,7 +110,7 @@ count: 6
 
 **关键词**: 尊敬、邀请、发布、产品、体验、回复、期待
 
-**超纲词**: 此致 敬礼 (cǐzhì jìnglǐ) = respectfully yours (letter closing)
+**生词**: 此致 敬礼 (cǐzhì jìnglǐ) = respectfully yours (letter closing)
 
 > 尊敬的王经理：
 > 
@@ -138,7 +138,7 @@ count: 6
 
 **关键词**: 请假、原因、时间、完成作业、补课、批准
 
-**超纲词**: 喉咙 (hóulóng) = throat；复课 (fùkè) = to resume classes
+**生词**: 喉咙 (hóulóng) = throat；复课 (fùkè) = to resume classes
 
 > 尊敬的王老师：
 > 

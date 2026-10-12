@@ -30,7 +30,7 @@ hsk-writing-generator-tcsl/
 │   ├── topic_tree.md          # 大纲话题树（三级）
 │   ├── hsk_vocab.json         # 2026 版 HSK 分级词表（级控查词用）
 │   ├── char_pinyin.json       # 汉字拼音映射（HTML 渲染用）
-│   └── model_essays/          # 56 篇参考范文（按题型合并，含四格图/引语/结构/超纲词）
+│   └── model_essays/          # 56 篇参考范文（按题型合并，含四格图/引语/结构/生词）
 └── scripts/               # 轻量工具脚本（纯标准库）
     ├── hsk_lookup.py          # 查词：返回词的 HSK 等级（2026 大纲口径）
     ├── text_stats.py          # 句长/书面语标记检查（level check）
