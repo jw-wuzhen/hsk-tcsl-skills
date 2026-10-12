@@ -6,7 +6,8 @@ description: HSK writing task & model-essay generator for international Chinese 
   (TCSL) and teachers. Covers all HSK1-6 writing tasks; any topic supported. Generates
   questions, guiding questions, sentence patterns, keywords, level-controlled model
   essays (out-of-syllabus words marked ★), a four-panel comic image for picture-story
-  tasks (Qwen/DashScope image API preferred, local SVG renderer as guaranteed fallback),
-  and a printable two-view HTML teaching page (student practice sheet + teacher resource
-  with rubric, teaching tips and quality check).
+  tasks (platform image tool preferred, local SVG renderer as guaranteed fallback;
+  Qwen/DashScope image API optional enhancement), and a printable two-view HTML
+  teaching page (student practice sheet + teacher resource with rubric, teaching
+  tips and quality check).
 author: BLCU TCSL Team (北语信创队)

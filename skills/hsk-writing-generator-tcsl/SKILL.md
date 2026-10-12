@@ -173,14 +173,14 @@ Target users: English-speaking Chinese learners (international students).
    **⚠️ 生词表一致性（必守）：`glossary` 只收范文中**实际出现**、且正文中已用 ★ 标注的词**，逐一对齐；严禁收录范文中没有的词（如示例中的"真是"必须出现在范文正文里）。
 4. 运行脚本（脚本自动按 2026 词表分段、标注每个词的 HSK 等级与拼音、高亮重点词句，生成**学生练习版+教师备课版双视图、带打印/下载按钮**的自包含 HTML；**看图作文时嵌入四格漫画**）：
    ```bash
-   python3 /mnt/skills/user/hsk-writing-generator-tcsl/v2.0.7/scripts/render_essay_html.py \
+   python3 <skill_root>/scripts/render_essay_html.py \
      --essay-file /mnt/user-data/workspace/essay_text.txt \
      --expressions-json /mnt/user-data/workspace/expr.json \
      --teacher-json /mnt/user-data/workspace/teacher.json \
      --output /mnt/user-data/outputs/essay_话题_HSKx.html \
      --hsk-level 5 --title "标题"
    ```
-   看图作文**必须嵌入漫画**（三选一）：千问 panels（默认）`--comic-images comic_话题_p1.png,...,comic_话题_p4.png`；千问 single 图 `--comic-image /mnt/user-data/outputs/comic_话题.png`；本地保底 `--comic-svg /mnt/user-data/outputs/comic_话题.svg`
+   看图作文**必须嵌入漫画**（三选一）：平台生图/千问 4 张分图 `--comic-images comic_话题_p1.png,...,comic_话题_p4.png`；平台生图/千问 单张 2×2 图 `--comic-image /mnt/user-data/outputs/comic_话题.png`；本地保底 `--comic-svg /mnt/user-data/outputs/comic_话题.svg`
    脚本路径不可用时：把 `render_essay_html.py` 复制到 `/mnt/user-data/workspace/`，并把 `reference/` 下的 `hsk_vocab.json`、`char_pinyin.json` 一起复制为 `/mnt/user-data/workspace/reference/`（保持 scripts 与 reference 的上下级关系），从工作区运行。
 5. 调用 `present_files(path="/mnt/user-data/outputs/essay_话题_HSKx.html")` 把 HTML 文件展示给用户。
 6. HTML 生成失败时：文本视图照常输出，并注明"HTML 学习页暂不可用"。**绝不编造 HTML 内容，绝不展示原始报错信息。**
@@ -217,36 +217,28 @@ Target users: English-speaking Chinese learners (international students).
 ]
 ```
 
-### Step 2: 生成四格漫画图片（三级路径，**至少产出一张**）
+### Step 2: 生成四格漫画图片（两级路径，**至少产出一张**）
 
-**路径①（首选）— 千问 API 生图（画质最好）**：运行包内脚本 `comic_gen.py`（纯标准库，调通义万相文生图）：
+**路径①（首选）— 平台图像生成工具**：用平台主模型自带的图像生成能力（如 image_gen/文生图工具），把四格画面描述生成为卡通四格漫画。四格共用同一主角外貌（读 panels.json 的 `look` 字段），每格一眼看清"在哪里、谁、在做什么"，场景占画面主体（全景/中景），画面禁止出现文字（标牌留白）。
+
+> **自动优先（可选）**：若已配置千问密钥（环境变量 `DASHSCOPE_API_KEY`/`QWEN_API_KEY`、调用参数 `--api-key`，或技能包根目录 `api_key.txt`），可**优先运行 `comic_gen.py` 替代本路径**生成 PNG 四格漫画（画质更好），再按 Step 3 嵌入 HTML；未配置密钥时默认走本路径，无需任何外部依赖。
+
+**路径②（保底，必成功）— 本地脚本**：运行包内 `comic_render.py`（零网络、零密钥）生成教学示意图风格的四格漫画 SVG：
 ```bash
-python3 /mnt/skills/user/hsk-writing-generator-tcsl/v2.0.7/scripts/comic_gen.py \
-  --panels-json /mnt/user-data/workspace/panels.json \
-  --output-dir /mnt/user-data/outputs --title "话题" --mode panels
-```
-- **`--mode panels`（默认推荐）**：逐格生成 4 张独立图——每格独立提示词、独立画布，**场景和动作最清晰**（看图作文的画面核心是"人物+场景结合"，panels 模式最能保证）；4 次调用，约 2-3 分钟
-- `--mode single`：一次生成一张 2×2 四格漫画（快，但四格细节容易互相抢戏，场景保真度低于 panels；仅当时间紧张时使用）
-- **脚本已内置连贯性提示词**：四格主角外貌/服装必须一致（自动读取 panels.json 的 `look` 字段）、每格一眼看清"在哪里、谁、在做什么"、场景占画面主体（全景/中景）、画面禁止出现文字（含标牌留白）。**不要修改脚本的提示词构造，直接调用即可。**
-- 密钥解析链：技能包内 `api_key.txt`（推荐）→ 环境变量 `DASHSCOPE_API_KEY`/`QWEN_API_KEY` → `--api-key` 参数
-- 脚本返回 `success: false`（无密钥/未开通/网络失败）→ **立即降级路径②**
-
-**路径②（次选）— 平台图像生成工具**：若平台主模型有图像生成能力（如 image_gen/文生图工具），用它把四格画面描述生成为卡通四格漫画（画面中不出现文字）。
-
-**路径③（保底，必成功）— 本地脚本**：运行包内 `comic_render.py`（零网络、零密钥）生成教学示意图风格的四格漫画 SVG：
-```bash
-python3 /mnt/skills/user/hsk-writing-generator-tcsl/v2.0.7/scripts/comic_render.py \
+python3 <skill_root>/scripts/comic_render.py \
   --panels-json /mnt/user-data/workspace/panels.json \
   --output /mnt/user-data/outputs/comic_话题.svg --title "话题"
 ```
 
-**规则**：按 ①→②→③ 依次尝试；②③失败（几乎不可能，③是纯本地）→ 才允许输出文字画面描述并注明"漫画生成失败"。**任何情况下至少交付一张图片，绝不只给文字。**
+**规则**：按 ①→② 依次尝试；②失败（几乎不可能，纯本地）→ 才允许输出文字画面描述并注明"漫画生成失败"。**任何情况下至少交付一张图片，绝不只给文字。**
+
+**千问生图使用细节**（密钥配置见路径①的"自动优先"说明）：运行 `comic_gen.py`（`--mode panels` 逐格 4 张、`--mode single` 一张 2×2）生成更高画质的 PNG 四格漫画，随后按 Step 3 用 `--comic-images`/`--comic-image` 嵌入 HTML。**不配置密钥不影响主流程**——默认走路径①②，无需任何外部依赖。
 
 ### Step 3: 交付（**漫画必须嵌入 HTML 学习页**）
 
 1. **漫画图一律嵌入 HTML 学习页**（HTML 是主交付物，图在其中，不再"图是图、文是文"）：
-   - 千问 `--mode panels`（默认）：加 `--comic-images comic_话题_p1.png,...,comic_话题_p4.png`（2×2 网格嵌入）
-   - 千问 `--mode single`：加 `--comic-image /mnt/user-data/outputs/comic_话题.png`（整张 2×2 图嵌入）
+   - 平台生图/千问 4 张分图：加 `--comic-images comic_话题_p1.png,...,comic_话题_p4.png`（2×2 网格嵌入）
+   - 平台生图/千问 单张 2×2 图：加 `--comic-image /mnt/user-data/outputs/comic_话题.png`（整张 2×2 图嵌入）
    - 本地 SVG：加 `--comic-svg /mnt/user-data/outputs/comic_话题.svg`
 2. 交付顺序：
    - 先用 `present_files(path="/mnt/user-data/outputs/essay_话题_HSKx.html")` 交付 HTML（图已嵌入）
