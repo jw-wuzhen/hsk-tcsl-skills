@@ -30,7 +30,90 @@ DEFAULT_AUTHORITATIVE_SOURCES = [
     {"name": "ACTFL", "url": "https://www.actfl.org"},
     {"name": "HSK / Chinese Testing International", "url": "https://www.chinesetest.cn"},
     {"name": "中国国际中文教育学会/国际中文教学标准", "url": "https://www.china-language.edu.cn"},
+    {"name": "史剑雄、王佶旻《诊断性写作测试评分量表的构建研究》（语言文字应用 2022年第3期）", "url": "https://kns.cnki.net/kcms2/article/abstract?v=DOI:10.16499/j.cnki.1003-5397.2022.03.001"},
 ]
+
+# ============================================================
+# 论文四维度评分量表（依据：史剑雄、王佶旻 2022）
+# 《诊断性写作测试评分量表的构建研究》，《语言文字应用》2022年第3期，114-123页
+# 维度划分经探索性因素分析（KMO=0.871，累计解释64.097%总方差），
+# 量表经多面Rasch模型检验：区分度良好、评分员内在一致性良好、
+# 维度难度排序：写作规范性 > 语言准确性 > 篇章合理性 > 语言丰富性。
+# 每个维度按 4 级（4优秀/3良好/2一般/1极差）评分，对应论文表3的等级描述语。
+# ============================================================
+SCALE_DIMENSIONS = {
+    "language_accuracy": {
+        "name_zh": "语言准确性",
+        "name_en": "Linguistic Accuracy",
+        "descriptors": ["用词准确", "语法正确", "句子结构正确", "句意明确", "固定搭配正确"],
+        "level4": "词语、句子结构、固定搭配、语法等完全正确；语言表述清晰，无歧义",
+        "level3": "词语、句子结构、固定搭配、语法等基本正确；表达基本清晰，个别句子理解不畅",
+        "level2": "词语、句子结构、固定搭配、语法等有一些错误；文章存在多处不顺畅",
+        "level1": "词语、句子结构、固定搭配、语法等错误很多；表达非常不清晰，难以理解",
+    },
+    "language_richness": {
+        "name_zh": "语言丰富性",
+        "name_en": "Linguistic Richness",
+        "descriptors": ["能够使用复杂的句式", "能正确使用成语、歇后语等熟语", "衔接手段多样", "词汇丰富多样", "议论/描写充分", "修辞方法使用得当"],
+        "level4": "词汇丰富多样；能使用复杂句式，句式灵活富有变化；能灵活使用熟语和修辞方法加强表达效果；熟练使用多种关联词；论据具体丰富",
+        "level3": "词汇、句式较为丰富；能准确使用基本的衔接手段和关联词；能较为详细地论证论点",
+        "level2": "词汇、句式略显单薄；能尝试使用基本的修辞手段和关联词进行作文；能就论点展开简单地说明",
+        "level1": "词汇、句式极其简单、单调；不能有效使用熟语和修辞手法进行写作；不能有效使用衔接手法进行阐述；无法论证论点",
+    },
+    "discourse_rationality": {
+        "name_zh": "篇章合理性",
+        "name_en": "Discourse Rationality",
+        "descriptors": ["结构清晰", "中心/观点明确", "段落过渡自然", "段落分配合理", "句间衔接自然", "内容切题"],
+        "level4": "结构清晰，段落详略得当；句间、段落间衔接自然、得体；内容切合主题；主题、思想表达完整鲜明",
+        "level3": "结构基本清晰，段落安排基本合理；文章衔接基本连贯；内容切合主题；思想表达基本清晰",
+        "level2": "文章有一定的结构逻辑性；表达连贯性稍差；内容基本切合主题；能有效进行观点表达",
+        "level1": "结构混乱，层次不清；文章连接不紧密；内容与主题无关；表达观点困难",
+    },
+    "writing_normalization": {
+        "name_zh": "写作规范性",
+        "name_en": "Writing Normalization",
+        "descriptors": ["汉字书写正确", "字数符合要求", "格式规范", "卷面整洁", "字迹清晰"],
+        "level4": "格式符合规范；汉字书写正确；卷面整洁、字迹清晰（纸笔考试）；排版、页面布局美观（机考）；篇幅达到规定字数",
+        "level3": "格式有少量错误；汉字书写存在少量错误；卷面比较整洁、字迹比较清晰（纸笔考试）；排版、页面布局较为合理（机考）；篇幅基本达到要求",
+        "level2": "格式问题严重；有一些错别字；基本做到卷面整洁、字迹清晰（纸笔考试）；排版、页面布局合理（机考）；篇幅基本达到要求",
+        "level1": "格式不规范；汉字书写存在大量错误；卷面不整洁、字迹潦草难辨（纸笔考试）；排版、页面布局十分随意、不美观（机考）；字数完全不达标",
+    },
+}
+
+SCALE_LEVEL_LABELS = {4: "优秀", 3: "良好", 2: "一般", 1: "极差"}
+
+# 生词定义（产品统一口径）：
+# 用户指定 HSK 目标等级后，**该等级及以上的词汇**（HSK目标级、更高等级词，
+# 以及词库未收录的超纲词）均为“生词”；**低于目标等级的词汇视为已掌握**，
+# 不进入生词学习卡片，保证诊断反馈的针对性。
+def _level_num(target_level):
+    match = re.search(r"\d", str(target_level))
+    return int(match.group(0)) if match else 3
+
+
+def _word_level_int(word_item):
+    match = re.search(r"[1-6]", str(word_item.get("level", "")))
+    return int(match.group(0)) if match else None
+
+
+def is_new_word(word_item, target_level):
+    """生词判定：目标等级及以上（含词库未收录的超纲词）为生词；低于目标等级为已掌握。"""
+    lv = _word_level_int(word_item)
+    target_num = _level_num(target_level)
+    if lv is None:
+        return True  # 未收录等级（超纲词）一律按生词处理
+    return lv >= target_num
+
+
+def split_words_by_level(word_items, target_level):
+    """按生词定义拆分词表：返回 (生词列表, 已掌握列表)。"""
+    new_words, mastered = [], []
+    for item in word_items:
+        if is_new_word(item, target_level):
+            new_words.append(item)
+        else:
+            mastered.append(item)
+    return new_words, mastered
 
 # 词库量词列缺失时补充的常见名词量词（教学常用）
 EXTRA_MEASURE_WORDS = {
@@ -717,18 +800,23 @@ def detect_grammar_and_semantic_errors(text: str):
     return issues
 
 
-def _related_words_for_issue(item, sentences, hsk_words):
-    """从错误所在句子提取命中的 HSK 词，作为相关词汇。"""
+def _related_words_for_issue(item, sentences, hsk_words, target_level="HSK3"):
+    """从错误所在句子提取命中的 HSK 词，作为相关词汇。
+
+    按生词定义过滤：仅保留目标等级及以上的词（含超纲词），
+    低于目标等级的词汇视为已掌握，不出现在错误归因的关联词汇中。
+    """
     idx = item.get("sentence_index")
     if idx and 1 <= idx <= len(sentences):
         sentence_text = sentences[idx - 1]
     else:
         sentence_text = item.get("original_fragment", "") or ""
     words = extract_text_words(sentence_text, hsk_words)
-    return words[:12]
+    new_words, _ = split_words_by_level([w for w in hsk_words if w["word"] in words], target_level)
+    return [w["word"] for w in new_words][:12]
 
 
-def build_attribution_report(issues, hsk_words, text):
+def build_attribution_report(issues, hsk_words, text, target_level="HSK3"):
     grammar_map = load_grammar_knowledge()
     sentences = split_sentences(text)
     report = []
@@ -761,7 +849,7 @@ def build_attribution_report(issues, hsk_words, text):
             "source": "https://www.chinesetest.cn/syllabus",
             "attribution": attribution,
             "suggestion": item["suggestion"],
-            "related_hsk_words": _related_words_for_issue(item, sentences, hsk_words),
+            "related_hsk_words": _related_words_for_issue(item, sentences, hsk_words, target_level),
             "related_grammar_points": knowledge,
         })
     return report
@@ -828,21 +916,135 @@ def build_knowledge_graph(issues, hsk_words, text):
     return graph
 
 
-def evaluate_overall(text: str, issues, target_level="HSK3"):
+# 目标等级建议篇幅（产品可配置参数，供“写作规范性”字数达标判断使用；
+# 并非论文数据，论文仅要求“篇幅达到规定字数/篇幅基本达到要求”）
+TARGET_WORD_COUNTS = {1: 80, 2: 120, 3: 160, 4: 200, 5: 250, 6: 300}
+
+# 逻辑关联词（篇章合理性/语言丰富性量化依据）
+CONNECTORS_CAUSAL = ["因为", "所以", "因此", "由于", "于是", "因而"]
+CONNECTORS_ADVERSATIVE = ["但是", "可是", "然而", "不过", "却", "但", "反而"]
+CONNECTORS_PROGRESSIVE = ["而且", "并且", "不仅", "不但", "甚至", "何况"]
+CONNECTORS_CONCESSIVE = ["虽然", "尽管", "即使", "哪怕", "即便"]
+CONNECTORS_ALL = CONNECTORS_CAUSAL + CONNECTORS_ADVERSATIVE + CONNECTORS_PROGRESSIVE + CONNECTORS_CONCESSIVE
+
+
+def _dimension_block(level, key, note):
+    """构造单维度评分块：1-4 级 + 百分制换算 + 论文等级描述语。"""
+    percent = round(level * 25)
+    return {
+        "score": level,
+        "percent": percent,
+        "level_label": SCALE_LEVEL_LABELS.get(level, "一般"),
+        "descriptors": SCALE_DIMENSIONS[key]["descriptors"],
+        "level_description": SCALE_DIMENSIONS[key].get(f"level{level}", ""),
+        "note": note,
+    }
+
+
+def evaluate_overall(text: str, issues, target_level="HSK3", hsk_words=None):
+    """按论文四维度评分量表（史剑雄、王佶旻 2022）自动评分。
+
+    每个维度依据可解释的规则量化后映射到 1-4 级
+    （4优秀/3良好/2一般/1极差，对应论文表3的等级描述语）。
+    总分 = 四维度等权平均换算百分制（论文未指定权重，维度难度排序
+    写作规范性 > 语言准确性 > 篇章合理性 > 语言丰富性 见论文表5）。
+    """
     sentence_count = max(1, len(split_sentences(text)))
     paragraph_count = max(1, len([p for p in text.splitlines() if p.strip()]))
     confirmed = sum(1 for item in issues if item["type"] != "无明显错误" and item.get("confidence", "高") == "高")
     possible = sum(1 for item in issues if item.get("confidence", "高") == "中")
     weighted_issue = confirmed + possible * 0.5
-
-    # 目标等级越高，语言准确性要求越严
-    level_num = int(re.search(r"\d", str(target_level)).group(0)) if re.search(r"\d", str(target_level)) else 3
+    issue_density = weighted_issue / sentence_count
+    level_num = _level_num(target_level)
     strictness = 1.0 + max(0, (level_num - 3)) * 0.08 - max(0, (3 - level_num)) * 0.05
 
-    accuracy = max(45, min(98, round((96 - weighted_issue / sentence_count * 45) * (1 / (1 + 0.08 * (strictness - 1))) * strictness)))
-    organization = max(50, min(96, 70 + min(paragraph_count, 5) * 4 - int(weighted_issue) * 3))
-    content = 72 if len(text.strip()) < 80 else min(92, 76 + min(len(text) // 120, 4) * 4)
-    score = round(content * 0.25 + organization * 0.25 + accuracy * 0.35 + 78 * 0.15)
+    text_clean = re.sub(r"[。！？!?；;，,、：:“”\"'（）()\s]", "", text)
+    avg_sentence_len = len(text_clean) / sentence_count
+    connector_count = sum(text.count(c) for c in CONNECTORS_ALL)
+
+    # ---------- 一、语言准确性 ----------
+    density_adj = issue_density * strictness
+    if density_adj <= 0.15:
+        accuracy_level = 4
+    elif density_adj <= 0.45:
+        accuracy_level = 3
+    elif density_adj <= 0.90:
+        accuracy_level = 2
+    else:
+        accuracy_level = 1
+    accuracy_note = (
+        f"错误密度约 {issue_density:.2f} 处/句（确定 {confirmed} 处、可能 {possible} 处），"
+        f"按论文‘语言准确性’维度（用词、语法、句子结构、句意、固定搭配）判定为{SCALE_LEVEL_LABELS[accuracy_level]}级。"
+    )
+
+    # ---------- 二、语言丰富性 ----------
+    if hsk_words is None:
+        hsk_words = load_hsk_words()
+    text_words = extract_text_words(text, hsk_words)
+    high_level_count = sum(1 for w in text_words for item in hsk_words
+                           if item["word"] == w and (_word_level_int(item) or 9) >= 5)
+    advanced_ratio = high_level_count / max(1, len(text_words))
+    if advanced_ratio >= 0.35 and avg_sentence_len >= 15 and connector_count >= 3:
+        richness_level = 4
+    elif advanced_ratio >= 0.15 and avg_sentence_len >= 12 and connector_count >= 2:
+        richness_level = 3
+    elif advanced_ratio >= 0.05 or connector_count >= 1:
+        richness_level = 2
+    else:
+        richness_level = 1
+    richness_note = (
+        f"作文命中 HSK5/6 及以上词汇 {high_level_count} 个（占命中词汇 {advanced_ratio:.0%}），"
+        f"平均句长约 {avg_sentence_len:.1f} 字，逻辑关联词出现 {connector_count} 次，"
+        f"按论文‘语言丰富性’维度（复杂句式、熟语、衔接手段、词汇多样、议论描写、修辞）判定为{SCALE_LEVEL_LABELS[richness_level]}级。"
+    )
+
+    # ---------- 三、篇章合理性 ----------
+    discourse_points = 0
+    if paragraph_count >= 3:
+        discourse_points += 1
+    if connector_count >= 2:
+        discourse_points += 1
+    if len(text_clean) >= 120:
+        discourse_points += 1
+    if discourse_points >= 3:
+        discourse_level = 4
+    elif discourse_points >= 2:
+        discourse_level = 3
+    elif discourse_points >= 1:
+        discourse_level = 2
+    else:
+        discourse_level = 1
+    discourse_note = (
+        f"识别到 {paragraph_count} 个段落，逻辑关联词 {connector_count} 个，"
+        f"按论文‘篇章合理性’维度（结构、观点、段落过渡与分配、句间衔接、切题）判定为{SCALE_LEVEL_LABELS[discourse_level]}级。"
+    )
+
+    # ---------- 四、写作规范性 ----------
+    target_len = TARGET_WORD_COUNTS.get(level_num, 160)
+    length_ratio = len(text_clean) / target_len
+    word_choice_errors = sum(1 for item in issues if item["type"] in ("用词错误", "冗余重复"))
+    if length_ratio >= 1.0 and word_choice_errors == 0:
+        norm_level = 4
+    elif length_ratio >= 0.8 and word_choice_errors <= 1:
+        norm_level = 3
+    elif length_ratio >= 0.5 and word_choice_errors <= 2:
+        norm_level = 2
+    else:
+        norm_level = 1
+    norm_note = (
+        f"全文约 {len(text_clean)} 字（目标 HSK{level_num} 建议篇幅 {target_len} 字，达标 {length_ratio:.0%}），"
+        f"用词/重复类错误 {word_choice_errors} 处，"
+        f"按论文‘写作规范性’维度（汉字书写、字数、格式、卷面）判定为{SCALE_LEVEL_LABELS[norm_level]}级。"
+    )
+
+    evaluation_dimensions = {
+        "language_accuracy": _dimension_block(accuracy_level, "language_accuracy", accuracy_note),
+        "language_richness": _dimension_block(richness_level, "language_richness", richness_note),
+        "discourse_rationality": _dimension_block(discourse_level, "discourse_rationality", discourse_note),
+        "writing_normalization": _dimension_block(norm_level, "writing_normalization", norm_note),
+    }
+    overall_level = round((accuracy_level + richness_level + discourse_level + norm_level) / 4, 1)
+    score = round(overall_level * 25)
 
     issue_types = [item["type"] for item in issues if item["type"] != "无明显错误"]
     if issue_types:
@@ -850,28 +1052,11 @@ def evaluate_overall(text: str, issues, target_level="HSK3"):
     else:
         logic_note = "整体表达清晰，未发现明显语法或语义问题，可继续提升表达自然度与篇章组织能力。"
 
-    evaluation_dimensions = {
-        "content_and_task_response": {
-            "score": content,
-            "note": f"全文约{len(text)}字，内容信息量和任务完成度需要结合题目要求进一步判断。",
-        },
-        "organization_and_coherence": {
-            "score": organization,
-            "note": f"识别到{paragraph_count}个段落，篇章衔接仍需关注主题推进和关联词使用。",
-        },
-        "language_accuracy_and_range": {
-            "score": accuracy,
-            "note": f"识别到{confirmed}处确定问题、{possible}处可能问题，评分区分了确定错误和可能问题。",
-        },
-        "lexical_and_grammatical_control": {
-            "score": round((accuracy + organization) / 2),
-            "note": f"结合目标 HSK{level_num} 等级，从词汇搭配、虚词使用和复句组织进行分层训练。",
-        },
-    }
-
     return {
         "overall_score": score,
+        "overall_level": overall_level,
         "target_level": str(target_level),
+        "scale_source": "史剑雄、王佶旻（2022）《诊断性写作测试评分量表的构建研究》，《语言文字应用》2022年第3期",
         "logic_evaluation": logic_note,
         "evaluation_dimensions": evaluation_dimensions,
         "global_suggestions": [
@@ -891,11 +1076,24 @@ def generate_skill_result(text: str, target_level="HSK3", task_type="HSK写作",
     level_summary = get_level_summary(hsk_words)
     level_samples = get_level_word_samples(hsk_words)
     issues = detect_grammar_and_semantic_errors(text)
-    attribution_report = build_attribution_report(issues, hsk_words, text)
+    attribution_report = build_attribution_report(issues, hsk_words, text, target_level)
     knowledge_graph = build_knowledge_graph(issues, hsk_words, text)
-    overall = evaluate_overall(text, issues, target_level)
+    overall = evaluate_overall(text, issues, target_level, hsk_words)
     reference_sources = load_reference_sources()
-    teaching_material_html = build_html_material(text, hsk_words, issues, overall, attribution_report, reference_sources)
+
+    # 统一词汇口径：作文命中的 HSK 词一律以 extract_text_words（最长匹配 + 去功能词）为准，
+    # 保证 JSON 生词统计、归因关联词与 HTML 生词卡片三方一致。
+    text_words = extract_text_words(text, hsk_words)
+    hit_items = [w for w in hsk_words if w["word"] in text_words]
+    new_words, mastered_words = split_words_by_level(hit_items, target_level)
+    teaching_material_html = build_html_material(text, hit_items, issues, overall, attribution_report, reference_sources, target_level)
+
+    # 生词统计：按统一生词定义（目标等级及以上 + 超纲词）拆分作文命中词汇
+    new_word_list = [
+        {"word": w["word"], "level": w["level"], "pinyin": w.get("pinyin", ""),
+         "en_def": w.get("en_def", "") or w.get("usage_note", "")}
+        for w in new_words
+    ]
 
     return {
         "part1_grammar_errors": issues,
@@ -904,6 +1102,13 @@ def generate_skill_result(text: str, target_level="HSK3", task_type="HSK写作",
         "knowledge_graph": knowledge_graph,
         "reference": "https://www.chinesetest.cn/syllabus",
         "reference_sources": reference_sources,
+        "new_word_policy": {
+            "definition": f"用户指定 HSK{_level_num(target_level)} 目标等级：HSK{_level_num(target_level)} 及以上词汇（含词库未收录的超纲词）均为生词；低于该等级的词汇视为已掌握，不出现在生词学习卡片中。",
+            "target_level": str(target_level),
+            "new_word_count": len(new_words),
+            "mastered_filtered_count": len(mastered_words),
+            "new_words": new_word_list,
+        },
         "vocabulary_coverage": {
             "total_words": len(hsk_words),
             "level_summary": level_summary,
@@ -914,10 +1119,11 @@ def generate_skill_result(text: str, target_level="HSK3", task_type="HSK写作",
             "core_functions": [
                 "语法/语义错误定位",
                 "错题归因报告自动生成",
-                "全文评价",
+                "全文评价（论文四维度评分量表）",
+                "生词学习卡片（按目标等级过滤）",
             ],
-            "knowledge_base": "HSK 1-6 本地词库 + 语法知识图谱 + 国际中文教学大纲 + CEFR/ACTFL 评估框架",
-            "innovation": "自适应知识图谱 + 词汇等级映射 + 语法归因关联 + 全文能力评估",
+            "knowledge_base": "HSK 1-6 本地词库 + 语法知识图谱 + 国际中文教学大纲 + 史剑雄、王佶旻(2022)四维度评分量表",
+            "innovation": "论文量表自动化评分 + 生词等级过滤 + 词汇等级映射 + 语法归因关联",
             "target_level": target_level,
             "task_type": task_type,
             "learner_native_language": learner_native_language,

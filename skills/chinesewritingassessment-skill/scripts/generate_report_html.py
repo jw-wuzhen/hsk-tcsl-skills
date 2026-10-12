@@ -74,7 +74,7 @@ def main():
     overall = result.get("part3_overall_evaluation", {})
     attribution = result.get("part2_attribution_report", [])
     reference_sources = result.get("reference_sources", None)
-    html_content = build_html_material(text, hsk_words, issues, overall, attribution, reference_sources)
+    html_content = build_html_material(text, hsk_words, issues, overall, attribution, reference_sources, args.hsk_level)
 
     # 写入文件
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)

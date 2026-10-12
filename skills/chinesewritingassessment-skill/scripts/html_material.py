@@ -21,17 +21,18 @@ ERROR_TYPE_COLORS = {
     "篇章衔接": "#27ae60", "逻辑问题": "#2c3e50", "无明显错误": "#27ae60",
 }
 
+# 论文四维度评分量表标签（史剑雄、王佶旻 2022）
 DIMENSION_LABELS = {
-    "content_and_task_response": "内容与任务完成",
-    "organization_and_coherence": "组织与连贯",
-    "language_accuracy_and_range": "语言准确性与广度",
-    "lexical_and_grammatical_control": "词汇与语法控制",
+    "language_accuracy": "语言准确性",
+    "language_richness": "语言丰富性",
+    "discourse_rationality": "篇章合理性",
+    "writing_normalization": "写作规范性",
 }
 DIMENSION_LABELS_EN = {
-    "content_and_task_response": "Content & Task Response",
-    "organization_and_coherence": "Organization & Coherence",
-    "language_accuracy_and_range": "Language Accuracy & Range",
-    "lexical_and_grammatical_control": "Lexical & Grammatical Control",
+    "language_accuracy": "Linguistic Accuracy",
+    "language_richness": "Linguistic Richness",
+    "discourse_rationality": "Discourse Rationality",
+    "writing_normalization": "Writing Normalization",
 }
 ERROR_TYPE_EN = {
     "量词缺失": "Missing Measure Word", "量词误用": "Misused Measure Word",
@@ -301,16 +302,19 @@ def _build_evaluation_panel(evaluation, issues):
     dim_bars = []
     for key, label_zh in DIMENSION_LABELS.items():
         dim = dimensions.get(key, {})
-        dim_score = dim.get("score", 0)
+        dim_score = dim.get("score", 0)          # 1-4 级（论文量表）
+        dim_percent = dim.get("percent", 0)      # 百分制换算
+        dim_level_label = dim.get("level_label", "一般")
+        dim_desc = dim.get("level_description", "")
         dim_note = dim.get("note", "")
         label_en = DIMENSION_LABELS_EN.get(key, key)
-        bar_color = "#27ae60" if dim_score >= 80 else ("#f39c12" if dim_score >= 65 else "#e74c3c")
+        bar_color = "#27ae60" if dim_score >= 4 else ("#f39c12" if dim_score >= 3 else ("#e67e22" if dim_score == 2 else "#e74c3c"))
         dim_bars.append(f'''
         <div class="dim-row">
           <div class="dim-label">{html.escape(label_zh)}<br><small class="en-sub">{html.escape(label_en)}</small></div>
-          <div class="dim-bar-wrap"><div class="dim-bar" style="width:{dim_score}%;background:{bar_color}"></div></div>
-          <div class="dim-score">{dim_score}</div>
-          <div class="dim-note">{html.escape(dim_note)}</div>
+          <div class="dim-bar-wrap"><div class="dim-bar" style="width:{dim_percent}%;background:{bar_color}"></div></div>
+          <div class="dim-score">{dim_score}/4<small class="en-sub"> {html.escape(dim_level_label)}</small></div>
+          <div class="dim-note">{html.escape(dim_desc)}<br><small>{html.escape(dim_note)}</small></div>
         </div>''')
 
     real_issues = [i for i in issues if i.get("type") != "无明显错误"]
@@ -351,7 +355,7 @@ def _build_evaluation_panel(evaluation, issues):
         </div>
       </div>
       <div class="eval-dimensions">
-        <h4>六维度评价 <small class="en-sub">Six-Dimension Evaluation</small></h4>
+        <h4>四维度评价 <small class="en-sub">Four-Dimension Evaluation (Shi &amp; Wang 2022)</small></h4>
         {''.join(dim_bars)}
       </div>
       <div class="eval-grid">
@@ -371,15 +375,30 @@ def _build_evaluation_panel(evaluation, issues):
     </section>'''
 
 
-def build_html_material(text, words, issues, evaluation, attribution_report=None, reference_sources=None):
-    """构建完整的中文写作评估 HTML 报告（中英双语 + 逐字拼音标注）。"""
+def build_html_material(text, words, issues, evaluation, attribution_report=None, reference_sources=None, target_level="HSK3"):
+    """构建完整的中文写作评估 HTML 报告（中英双语 + 逐字拼音标注）。
+
+    词汇学习卡片按统一生词定义过滤：仅保留目标等级及以上的词
+    （含词库未收录的超纲词），低于目标等级的词汇视为已掌握，不展示。
+    """
     used = OrderedDict()
     for item in words:
         if item.get("word") and item["word"] in text:
             used[item["word"]] = item
     used_words = list(used.values())
-    grouped = {}
+    # 生词过滤：level >= 目标等级 或 未收录等级（超纲词）
+    target_num = int(re.search(r"\d", str(target_level)).group(0)) if re.search(r"\d", str(target_level)) else 3
+    new_word_items = []
+    filtered_mastered = []
     for item in used_words:
+        lv_match = re.search(r"[1-6]", str(item.get("level", "")))
+        lv = int(lv_match.group(0)) if lv_match else None
+        if lv is None or lv >= target_num:
+            new_word_items.append(item)
+        else:
+            filtered_mastered.append(item)
+    grouped = {}
+    for item in new_word_items:
         grouped.setdefault(_clean_level(item.get("level")), []).append(item)
     glossary = []
     for level in sorted(grouped, key=lambda value: (value == "?", value)):
@@ -595,8 +614,9 @@ footer {{ margin-top:28px; color:var(--muted); font-size:13px; text-align:center
 </section>
 
 <section class="panel" id="vocab" style="margin-top:24px">
-  <h2>📚 词语卡片 <span class="en-sub">Vocabulary Cards</span></h2>
-  <div class="glossary">{''.join(glossary) or '<p>本文暂未匹配到词库词语。<br><span class="en-sub">No HSK vocabulary matched.</span></p>'}</div>
+  <h2>📚 生词学习卡片 <span class="en-sub">New Word Cards</span></h2>
+  <p class="panel-sub">生词定义：目标等级 <strong>HSK{target_num}</strong> 及以上的词汇（含词库未收录的超纲词）均为生词；已过滤低于目标等级的已掌握词汇 {len(filtered_mastered)} 个，仅展示 {len(new_word_items)} 个生词，保证复习的针对性。 / Words at or above the target level (HSK{target_num}) are treated as new words; {len(filtered_mastered)} mastered words below the target level are filtered out.</p>
+  <div class="glossary">{''.join(glossary) or '<p>本文暂未匹配到目标等级及以上的词库词语。<br><span class="en-sub">No new HSK vocabulary at or above the target level matched.</span></p>'}</div>
 </section>
 
 <section class="panel" id="sentences" style="margin-top:24px">
@@ -604,8 +624,8 @@ footer {{ margin-top:28px; color:var(--muted); font-size:13px; text-align:center
   <div class="sentence-list">{_sentence_cards(text, issues)}</div>
 </section>
 
-<footer>本报告由中文写作评估技能生成，基于 HSK 1-6 词库与国际中文教学标准，可在浏览器中直接打印、保存或下载。<br>
-<span class="en-sub">Generated by Chinese Writing Assessment Skill. Based on HSK 1-6 vocabulary and International Chinese Teaching Standards.</span></footer>
+<footer>本报告由中文写作评估技能生成：错误定位基于本地规则库与 HSK 1-6 词库；四维度评分量表依据史剑雄、王佶旻（2022）《诊断性写作测试评分量表的构建研究》（语言文字应用 2022年第3期）。可在浏览器中直接打印、保存或下载。<br>
+<span class="en-sub">Generated by Chinese Writing Assessment Skill. Errors detected by local rule engine; four-dimension scale based on Shi &amp; Wang (2022), Language Application, No.3.</span></footer>
 </main>
 <script>
 function downloadHtml() {{
