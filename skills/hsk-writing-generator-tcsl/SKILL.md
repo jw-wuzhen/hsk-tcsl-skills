@@ -48,8 +48,8 @@ hsk-writing-generator-tcsl/
     ├── hsk_lookup.py        查词脚本：判断词语的HSK等级（生词口径判定用）
     ├── text_stats.py        字数/句长统计
     ├── render_essay_html.py HTML学习页渲染器（核心，见"五"）
-    ├── comic_render.py      本地四格漫画SVG生成（零网络零密钥，保底路径）
-    └── comic_gen.py         千问通义万相四格漫画PNG生成（可选增强，需密钥）
+    ├── comic_render.py      本地四格漫画SVG生成（零依赖兜底，画质有限）
+    └── comic_gen.py         千问通义万相四格漫画PNG生成（推荐，画质最佳，需密钥）
 ```
 
 ## 四、完整工作流（一次调用）
@@ -243,20 +243,25 @@ hsk-writing-generator-tcsl/
 **连贯性要求**：四格围绕**同一主角**，情节因果连贯（起因→发展→结果）；动作具体、可画出来（谁+做什么+关键细节），避免抽象词。
 **场景人物结合**（看图作文的画面核心）：每格让读者一眼看清"在哪里、谁、在做什么"——场景占画面重要部分（全景/中景，人物全身或大半身），标志物清晰可辨（公交车要有车窗扶手、公园要有树和长椅）。
 
-### Step 2 — 生成漫画图片（两级路径，至少产出一张）
+### Step 2 — 生成漫画图片（三级路径，至少产出一张）
 
-**路径①（首选）— 平台图像生成工具**：用平台主模型自带的图像生成能力（如 image_gen），把四格画面描述生成卡通四格漫画。四格共用同一主角外貌（读 `look` 字段），画面禁止出现文字（标牌留白）。
+**路径①（推荐首选）— 千问通义万相**（画质最佳，**建议优先使用**）：配置密钥后运行 `comic_gen.py` 生成 PNG 四格漫画（`--mode panels` 逐格 4 张、`--mode single` 一张 2×2），再按 Step 3 嵌入 HTML。密钥解析链：环境变量 `DASHSCOPE_API_KEY`/`QWEN_API_KEY`、调用参数 `--api-key`，或技能包根目录 `api_key.txt`。
+```bash
+python3 <skill_root>/scripts/comic_gen.py \
+  --panels-json /mnt/user-data/workspace/panels.json \
+  --output-dir /mnt/user-data/outputs --title "话题" --mode single
+```
 
-**路径②（保底，必成功）— 本地脚本**（零网络、零密钥）：
+**路径② — 平台图像生成工具**：未配置千问密钥时，用平台主模型自带的图像生成能力（如 image_gen），把四格画面描述生成卡通四格漫画。四格共用同一主角外貌（读 `look` 字段），画面禁止出现文字（标牌留白）。
+
+**路径③（兜底，必成功）— 本地脚本**（零网络、零密钥；纯几何简笔画，**画质有限，仅作无网络/无密钥时的最后兜底**）：
 ```bash
 python3 <skill_root>/scripts/comic_render.py \
   --panels-json /mnt/user-data/workspace/panels.json \
   --output /mnt/user-data/outputs/comic_话题.svg --title "话题"
 ```
 
-**可选增强 — 千问通义万相**（画质更好，不配置密钥不影响主流程）：若已配置密钥（环境变量 `DASHSCOPE_API_KEY`/`QWEN_API_KEY`、调用参数 `--api-key`，或技能包根目录 `api_key.txt`），可运行 `comic_gen.py` 优先生成 PNG 四格漫画（`--mode panels` 逐格 4 张、`--mode single` 一张 2×2），再按 Step 3 嵌入 HTML。
-
-**规则**：按 ①→② 依次尝试；②失败（几乎不可能，纯本地）→ 才允许输出文字画面描述并注明"漫画生成失败"。**任何情况下至少交付一张图片。**
+**规则**：按 ①→②→③ 依次尝试，**优先保证出图画质**（千问 PNG > 平台图 > 本地 SVG）；③ 失败（几乎不可能，纯本地）→ 才允许输出文字画面描述并注明"漫画生成失败"。**任何情况下至少交付一张图片。**
 
 ### Step 3 — 嵌入与交付
 
@@ -278,7 +283,7 @@ python3 <skill_root>/scripts/comic_render.py \
 <题目全文，含字数要求>
 
 【四格漫画】（看图作文时，**必须展示漫画图片**）
-🖼️ 图片：comic_话题.svg — 从项目文件打开（已生成四格漫画）
+🖼️ 图片：comic_话题.png — 从项目文件打开（已生成四格漫画；本地兜底为 .svg）
 图1：<画面描述>
 图2：<画面描述>
 图3：<画面描述>

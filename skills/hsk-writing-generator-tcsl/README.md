@@ -33,7 +33,7 @@
 |---|---|
 | ![学生练习版](assets/demo-student-view.png) | ![方格纸范文](assets/demo-grid-paper.png) |
 
-| 生词表（★ + 拼音 + 词性 + 释义 + 原文例句） | 看图作文四格漫画（千问生图 · 保护环境，无需任何密钥也能出图） |
+| 生词表（★ + 拼音 + 词性 + 释义 + 原文例句） | 看图作文四格漫画（千问生图 · 保护环境，画质最佳；无密钥时本地兜底也能出图） |
 |---|---|
 | ![生词表](assets/demo-glossary.png) | ![四格漫画](assets/demo-comic-huanbao.png) |
 
@@ -42,7 +42,7 @@
 - **等级可控（核心设计）**：词汇、语法、句长、话题四类边界全部按新版 HSK 大纲卡死。目标等级及以上的词、以及词表查不到的词，一律收进【生词表】并标注（★ + 拼音 + 词性 + 释义 + 原文例句），**绝不静默放过**——杜绝低级别词汇混进生词表
 - **作文纸还原书写场景**：方格纸（字帖米字格、每行满格、末行空格补齐、段落开头空两格）/ 横线纸（横线跟随每行字，行距即线距），一键切换，学生照着练格式
 - **重点词句不脱离原文**：学习页只展示范文中实际出现的表达，例句直接从范文里带出来并高亮加粗——学词就学在句子里
-- **看图作文必出四格漫画**：平台图像生成 → 本地 SVG 渲染两级路径自动降级，**不配置任何密钥也能出图**
+- **看图作文必出四格漫画**：**推荐用千问生图**（画质最佳）→ 平台图像工具 → 本地 SVG 渲染，三级路径自动降级，**不配置任何密钥也能出图**
 - **教师备课一站式**：教学信息、范文结构、评分要点、教学建议、级控自动检查（字数实算）都在同一份 HTML 里，可直接打印 / 存 PDF / 下载
 - **零依赖**：全部为 Python 标准库脚本 + 自包含 HTML，可离线复现
 
@@ -67,7 +67,7 @@
 # 查词：判断词语的 HSK 等级（生词口径判定）
 python3 scripts/hsk_lookup.py --words "旅行,坚持,导航"
 
-# 本地四格漫画渲染（零网络、零密钥，必成功）
+# 本地四格漫画渲染（零网络、零密钥；纯几何简笔画，画质有限，仅作兜底）
 python3 scripts/comic_render.py \
   --panels-json panels.json --output comic.svg --title "话题"
 
@@ -79,7 +79,7 @@ python3 scripts/render_essay_html.py \
   --output essay_话题_HSKx.html --hsk-level 5 --title "标题"
 ```
 
-> 可选增强：看图作文想要更高画质的 PNG 漫画时，可配置千问 DashScope 密钥后运行 `comic_gen.py`（`--mode panels` 逐格 4 张 / `--mode single` 一张 2×2）。**不配置密钥不影响主流程**。
+> **看图作文生图（推荐）**：建议配置千问 DashScope 密钥，运行 `comic_gen.py` 生成高画质 PNG 漫画（`--mode panels` 逐格 4 张 / `--mode single` 一张 2×2；密钥配置：环境变量 `DASHSCOPE_API_KEY`/`QWEN_API_KEY`、`--api-key` 参数，或技能包根目录 `api_key.txt`）。本地 SVG 画质有限，仅作无密钥时的兜底。
 
 ## 级控是怎么做到的
 
@@ -106,8 +106,8 @@ hsk-writing-generator-tcsl/
     ├── hsk_lookup.py         查词（生词判定）
     ├── text_stats.py         字数/句长统计
     ├── render_essay_html.py  HTML 学习页渲染（核心）
-    ├── comic_render.py       本地四格漫画 SVG（零依赖保底）
-    └── comic_gen.py          千问通义万相生图（可选增强，需密钥）
+    ├── comic_render.py       本地四格漫画 SVG（零依赖兜底，画质有限）
+    └── comic_gen.py          千问通义万相生图（推荐，画质最佳，需密钥）
 ```
 
 ## 面向开发者
