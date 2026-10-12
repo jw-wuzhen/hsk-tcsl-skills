@@ -1,6 +1,6 @@
 ---
 name: hsk-conversation-generator-tcsl
-description: "基于新版HSK大纲（2026年7月实施）的对话材料生成器，面向国际中文学习者（TCSL）与教师。生成三种口语教学材料：场景对话脚本、话题问题卡（热身/核心/拓展三级递进）、角色扮演任务卡（A/B角色+任务目标+语言要求+参考表达）。任意话题均可处理：先在大纲话题树中定位，再按等级语言边界生成；生词自动★标注并附拼音+母语翻译；场景对话默认交付 HTML 学习页（气泡双栏对话 + 遮句自练 + 生词悬停标注）；HSK1-3可带英文支架。当用户需要HSK口语练习、对话教学材料、课堂讨论问题、角色扮演活动时调用。 | A dialogue-material generator built on the new HSK syllabus (effective July 2026) for international Chinese learners (TCSL) and teachers. Produces scene dialogue scripts, topic discussion cards, and role-play task cards for any topic at any level."
+description: "基于新版HSK大纲（2026年7月实施）的对话材料生成器，面向国际中文学习者（TCSL）与教师。生成三种口语教学材料：场景对话脚本、话题问题卡（热身/核心/拓展三级递进）、角色扮演任务卡（A/B角色+任务目标+语言要求+参考表达）。任意话题均可处理：先在大纲话题树中定位，再按等级语言边界生成；生词自动★标注并附拼音+母语翻译；三种材料默认交付 HTML 学习页（场景对话：气泡双栏+遮句自练+生词悬停标注；问题卡：三级递进+教师提示折叠；角色扮演卡：A/B 分栏+参考表达胶囊）；HSK1-3可带英文支架。当用户需要HSK口语练习、对话教学材料、课堂讨论问题、角色扮演活动时调用。 | A dialogue-material generator built on the new HSK syllabus (effective July 2026) for international Chinese learners (TCSL) and teachers. Produces scene dialogue scripts, topic discussion cards, and role-play task cards for any topic at any level."
 ---
 
 # HSK 对话材料生成器 — TCSL 版 v2.0
@@ -98,7 +98,7 @@ Target users: English-speaking Chinese learners (international students).
 
 按"输出模板"输出学生视图 + 教师视图。
 
-> **场景对话（dialogue_script）的稳定交付形态**：在文本视图之外，**同时生成对话 HTML 学习页**（气泡双栏对话 + 遮句自练 + 生词悬停标注）——这是场景对话的默认交付形态，见 Step 8。只有用户明确"只要文本/不要页面"时才停在文本视图。问题卡与角色扮演卡保持文本视图。
+> **三种材料的稳定交付形态**：在文本视图之外，**同时生成 HTML 学习页**——场景对话（气泡双栏 + 遮句自练 + 生词悬停标注，见 Step 8）、问题卡（三级递进 + 教师提示折叠，见 Feature 2 Step 6）、角色扮演卡（A/B 分栏 + 参考表达胶囊，见 Feature 3 Step 5）。只有用户明确"只要文本/不要页面"时才停在文本视图。
 
 ### Step 8: 生成 HTML 学习页（仅场景对话，自动完成，禁止手工写 HTML）
 
@@ -178,6 +178,48 @@ Target users: English-speaking Chinese learners (international students).
 
 按"输出模板 · 问题卡"输出。
 
+### Step 6: 生成 HTML 学习页（自动完成，禁止手工写 HTML）
+
+**⚠️ 不要手工写 HTML——把问题卡素材整理成 cards.json，交给脚本生成文件。**
+
+1. 把问题卡素材保存为 `/mnt/user-data/workspace/cards.json`，格式：
+   ```json
+   {
+     "type": "discussion",
+     "title": "HSK4 话题问题卡：网上购物",
+     "hsk_level": 4,
+     "level_label": "HSK4",
+     "tags": ["HSK4", "课堂讨论", "6题"],
+     "topic": "网上购物",
+     "topic_tree": "科学技术 > 科技发展",
+     "cards": [
+       {"stage": "warmup", "question": "你经常在网上买东西吗？",
+        "teacher_tip": "用“经常/有时候/很少”"},
+       {"stage": "core", "question": "网上购物有什么好处？",
+        "teacher_tip": "用“方便/便宜/选择多”"},
+       {"stage": "extended", "question": "你觉得实体店会消失吗？为什么？",
+        "teacher_tip": "说出你的看法和两个理由"}
+     ],
+     "teaching": {
+       "level_desc": "HSK4（CEFR B1+，词汇量 2000 词，书写字 400 字）",
+       "speaking_ability": "能比较流利地讲述家庭生活等话题；能与人交流看法",
+       "org_flow": "热身（5分钟）→ 核心活动（15分钟）→ 拓展/表演（10分钟）→ 总结",
+       "rubric": ["语音清晰、句子自然", "词汇以本级词为主", "交际达成"]
+     }
+   }
+   ```
+   **注意：`cards` 按 warmup → core → extended 顺序组装（不足 6 张时按此顺序截取）；每张卡的 `stage` 必须是 warmup/core/extended 之一；`teacher_tip` 为答题框架（教师提示），必须填写，脚本默认收起、点击展开。**
+2. 运行脚本（自动生成热身/核心/拓展三级递进徽章、教师提示折叠卡、教师视图，自包含可打印 HTML）：
+   ```bash
+   python3 <skill_root>/scripts/render_cards_html.py \
+     --cards-json /mnt/user-data/workspace/cards.json \
+     --mode discussion \
+     --output /mnt/user-data/outputs/cards_话题_HSKx.html
+   ```
+   脚本路径不可用时：把 `render_cards_html.py` 复制到 `/mnt/user-data/workspace/`，从工作区运行。
+3. 调用 `present_files(path="/mnt/user-data/outputs/cards_话题_HSKx.html")` 把 HTML 文件展示给用户。
+4. HTML 生成失败时：文本视图照常输出，并注明"HTML 学习页暂不可用"。**绝不编造 HTML 内容，绝不展示原始报错信息。**
+
 ---
 
 ## Feature 3: 角色扮演任务卡
@@ -202,6 +244,49 @@ Target users: English-speaking Chinese learners (international students).
 ### Step 4: 输出
 
 按"输出模板 · 角色扮演卡"输出。
+
+### Step 5: 生成 HTML 学习页（自动完成，禁止手工写 HTML）
+
+1. 把角色扮演卡素材保存为 `/mnt/user-data/workspace/cards.json`，格式：
+   ```json
+   {
+     "type": "roleplay",
+     "title": "HSK4 角色扮演任务卡",
+     "hsk_level": 4,
+     "level_label": "HSK4",
+     "tags": ["HSK4", "情景表演", "4个任务"],
+     "cards": [
+       {
+         "name": "去银行办卡",
+         "topic_tree": "职场生活 > 日常办公",
+         "scenario": "你去银行办银行卡",
+         "role_a": {"name": "你：顾客", "focus": "说明要办什么、配合填写和签字"},
+         "role_b": {"name": "银行职员", "focus": "引导办卡流程、告知取卡时间"},
+         "goal": "办成银行卡，知道取卡时间",
+         "lang_reqs": ["说明要办什么", "配合填写和签字", "问清流程和时间"],
+         "expressions": ["我想办一张银行卡。", "请填一下这张表。", "请在这里签字。", "三个工作日后来取。"],
+         "duration": "6-8分钟"
+       }
+     ],
+     "teaching": {
+       "level_desc": "HSK4（CEFR B1+，词汇量 2000 词，书写字 400 字）",
+       "speaking_ability": "能比较流利地讲述家庭生活等话题；能与人交流看法",
+       "org_flow": "热身（5分钟）→ 核心活动（15分钟）→ 拓展/表演（10分钟）→ 总结",
+       "rubric": ["语音清晰、句子自然", "词汇以本级词为主", "交际达成"]
+     }
+   }
+   ```
+   **注意：`role_a`/`role_b` 的 `name` 为学生可见角色名，`focus` 为该角色的立场/任务方向；`lang_reqs` 2-4 条语言要求；`expressions` 3-6 个本等级参考表达；`duration` 为表演时间（按等级：HSK1-2 3-5分钟、HSK3-4 5-8分钟、HSK5-6 10-12分钟）。**
+2. 运行脚本（自动生成情景横条、A/B 角色双栏、任务目标高亮、语言要求列表、参考表达胶囊、表演时间徽章，自包含可打印 HTML）：
+   ```bash
+   python3 <skill_root>/scripts/render_cards_html.py \
+     --cards-json /mnt/user-data/workspace/cards.json \
+     --mode roleplay \
+     --output /mnt/user-data/outputs/roleplay_话题_HSKx.html
+   ```
+   脚本路径不可用时：把 `render_cards_html.py` 复制到 `/mnt/user-data/workspace/`，从工作区运行。
+3. 调用 `present_files(path="/mnt/user-data/outputs/roleplay_话题_HSKx.html")` 把 HTML 文件展示给用户。
+4. HTML 生成失败时：文本视图照常输出，并注明"HTML 学习页暂不可用"。**绝不编造 HTML 内容，绝不展示原始报错信息。**
 
 ---
 
@@ -243,6 +328,9 @@ File: dialogue_话题_HSKx.html — 从项目文件打开（气泡双栏对话 +
 卡2【核心】<问题>
 卡3【核心】<问题>
 卡4【拓展】<问题>
+
+### 📄 HTML 学习页
+File: cards_话题_HSKx.html — 从项目文件打开（热身/核心/拓展徽章 + 教师提示折叠，可打印）
 ```
 
 ### 学生视图 · 角色扮演
@@ -261,6 +349,9 @@ File: dialogue_话题_HSKx.html — 从项目文件打开（气泡双栏对话 +
   · <补充要求>
 【参考表达】<表达1> / <表达2> / <表达3>
 【表演时间】<时长>
+
+### 📄 HTML 学习页
+File: roleplay_话题_HSKx.html — 从项目文件打开（A/B 角色分栏 + 参考表达胶囊，可打印）
 ```
 
 ### 教师视图（三种材料通用）
@@ -291,7 +382,7 @@ File: dialogue_话题_HSKx.html — 从项目文件打开（气泡双栏对话 +
 3. **句长边界**：HSK1 每句 ≤8 字 → HSK6 ≤35 字，逐级放宽
 4. **支架边界**：只支架指令性文本，学习目标文本（台词、关键词、参考表达）永不翻译
 5. **话题边界**：话题先定位话题树；树外话题映射到最接近支，不报错
-6. **HTML 交付**：场景对话默认交付 HTML 学习页（气泡双栏/遮句自练/生词悬停标注）；文本视图为兜底；问题卡与角色扮演卡保持文本视图
+6. **HTML 交付**：三种材料默认交付 HTML 学习页（场景对话：气泡双栏/遮句自练/生词悬停标注；问题卡：三级递进/教师提示折叠；角色扮演卡：A/B 分栏/参考表达胶囊）；文本视图为兜底
 
 ## Error Handling
 
@@ -299,6 +390,6 @@ File: dialogue_话题_HSKx.html — 从项目文件打开（气泡双栏对话 +
 - 没找到等级：问 "What is your HSK level?"
 - 脚本失败/词表缺失：不阻塞输出，材料照常给出（生词按"宁标勿漏"人工判断），并提示"词汇核查暂不可用"
 - 话题不在话题树：映射到最接近话题支，不报错（见 Feature 1 Step 2）
-- HTML 生成失败：文本视图照常输出，注明"HTML 学习页暂不可用"；绝不编造 HTML、绝不展示原始报错（见 Feature 1 Step 8）
+- HTML 生成失败：文本视图照常输出，注明"HTML 学习页暂不可用"；绝不编造 HTML、绝不展示原始报错（见 Feature 1 Step 8 / Feature 2 Step 6 / Feature 3 Step 5）
 - 用户要求其他技能范围（写作、语法分析等）：礼貌告知范围
 - 绝不向用户展示原始报错信息
