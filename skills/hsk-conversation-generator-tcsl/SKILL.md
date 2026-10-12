@@ -1,6 +1,6 @@
 ---
 name: hsk-conversation-generator-tcsl
-description: "基于新版HSK大纲（2026年7月实施）的对话材料生成器，面向国际中文学习者（TCSL）与教师。生成三种口语教学材料：场景对话脚本、话题问题卡（热身/核心/拓展三级递进）、角色扮演任务卡（A/B角色+任务目标+语言要求+参考表达）。任意话题均可处理：先在大纲话题树中定位，再按等级语言边界生成；超纲词自动★标注并附拼音+母语翻译；场景对话默认交付 HTML 学习页（气泡双栏对话 + 遮句自练 + 超纲词悬停标注）；HSK1-3可带英文支架。当用户需要HSK口语练习、对话教学材料、课堂讨论问题、角色扮演活动时调用。 | A dialogue-material generator built on the new HSK syllabus (effective July 2026) for international Chinese learners (TCSL) and teachers. Produces scene dialogue scripts, topic discussion cards, and role-play task cards for any topic at any level."
+description: "基于新版HSK大纲（2026年7月实施）的对话材料生成器，面向国际中文学习者（TCSL）与教师。生成三种口语教学材料：场景对话脚本、话题问题卡（热身/核心/拓展三级递进）、角色扮演任务卡（A/B角色+任务目标+语言要求+参考表达）。任意话题均可处理：先在大纲话题树中定位，再按等级语言边界生成；生词自动★标注并附拼音+母语翻译；场景对话默认交付 HTML 学习页（气泡双栏对话 + 遮句自练 + 生词悬停标注）；HSK1-3可带英文支架。当用户需要HSK口语练习、对话教学材料、课堂讨论问题、角色扮演活动时调用。 | A dialogue-material generator built on the new HSK syllabus (effective July 2026) for international Chinese learners (TCSL) and teachers. Produces scene dialogue scripts, topic discussion cards, and role-play task cards for any topic at any level."
 ---
 
 # HSK 对话材料生成器 — TCSL 版 v2.0
@@ -8,7 +8,7 @@ description: "基于新版HSK大纲（2026年7月实施）的对话材料生成�
 基于新版HSK考试大纲（2026年7月实施）的口语教学材料生成器，面向国际中文学习者与教师。
 
 三种材料类型：
-1. **场景对话脚本**（dialogue_script）——分级对话 + 关键词 + 超纲词注释 + 学后任务
+1. **场景对话脚本**（dialogue_script）——分级对话 + 关键词 + 生词表 + 学后任务
 2. **话题问题卡**（discussion_cards）——热身/核心/拓展三级递进，每卡带教师提示
 3. **角色扮演任务卡**（roleplay_cards）——情景 + 角色A/B + 任务目标 + 语言要求 + 参考表达
 
@@ -72,10 +72,10 @@ Target users: English-speaking Chinese learners (international students).
 
 1. 参照 `<skill_root>/reference/model_dialogues/<level>.md` 中同等级对话的风格：台词简短自然、贴近真实交际、两人对话 6-12 轮
 2. 按话题定位的场景展开（场景 + 人物 2-3 人 + 交际功能）
-3. 台词只用本等级词汇和语法；不可避免的超纲词先正常写出，Step 5 统一标注
+3. 台词只用本等级词汇和语法；不可避免的生词先正常写出，Step 5 统一标注
 4. 附学后任务（复述/表演/替换练习，HSK1-2 配英文）
 
-### Step 5: 级控检查与超纲词标注
+### Step 5: 级控检查与生词标注
 
 1. 从台词中挑出 10-20 个最没把握的词（高级名词、动词、形容词）
 2. 运行查词脚本：
@@ -84,9 +84,9 @@ Target users: English-speaking Chinese learners (international students).
    ```
 3. 处理规则：
    - 词的等级 ≤ 学生等级 → 正常使用
-   - 词的等级 > 学生等级，或词表查不到 → **超纲词**：台词中用 ★ 包起来（如 ★春联★），并在【超纲词注释】块给出 拼音 + 母语翻译
+   - 词的等级 ≥ 学生等级，或词表查不到 → **生词**：台词中用 ★ 包起来（如 ★春联★），并在【生词表】块给出 拼音 + 母语翻译
    - 结构助词和标点跳过
-4. 对话中不要堆超纲词：同一意思优先换本等级词（如"采购"→"买"）
+4. 对话中不要堆生词：同一意思优先换本等级词（如"采购"→"买"）
 
 ### Step 6: 英文支架（仅 HSK1-3 且 scaffold_language=en）
 
@@ -98,7 +98,7 @@ Target users: English-speaking Chinese learners (international students).
 
 按"输出模板"输出学生视图 + 教师视图。
 
-> **场景对话（dialogue_script）的稳定交付形态**：在文本视图之外，**同时生成对话 HTML 学习页**（气泡双栏对话 + 遮句自练 + 超纲词悬停标注）——这是场景对话的默认交付形态，见 Step 8。只有用户明确"只要文本/不要页面"时才停在文本视图。问题卡与角色扮演卡保持文本视图。
+> **场景对话（dialogue_script）的稳定交付形态**：在文本视图之外，**同时生成对话 HTML 学习页**（气泡双栏对话 + 遮句自练 + 生词悬停标注）——这是场景对话的默认交付形态，见 Step 8。只有用户明确"只要文本/不要页面"时才停在文本视图。问题卡与角色扮演卡保持文本视图。
 
 ### Step 8: 生成 HTML 学习页（仅场景对话，自动完成，禁止手工写 HTML）
 
@@ -121,7 +121,7 @@ Target users: English-speaking Chinese learners (international students).
        {"speaker": "小王", "line": "是啊，阳光很暖和，我想先去买点菜。"}
      ],
      "keywords": ["天气", "阳光", "买菜", "做饭", "打扫", "擦", "散步"],
-     "over_syllabus": [
+     "new_words": [
        {"word": "西红柿", "pinyin": "xī hóng shì", "hsk": 5, "meaning": "tomato",
         "example": "那中午我做西红柿鸡蛋面，你觉得怎么样？"}
      ],
@@ -134,8 +134,8 @@ Target users: English-speaking Chinese learners (international students).
      }
    }
    ```
-   **注意：`over_syllabus` 只收台词中实际出现、且已按 Step 5 判定为超纲的词**（等级 > 学生等级或词表查不到）；脚本自动把台词里的超纲词变成悬停标注（拼音+HSK等级+释义）。`characters` 顺序决定气泡左右分列（第 1 位左、第 2 位右），遮句按钮按角色自动生成。
-2. 运行脚本（自动生成气泡双栏对话、遮句自练按钮、超纲词悬停标注、关键词/重点句型/超纲词注释/学后任务/教师视图卡片，自包含可打印 HTML）：
+   **注意：`new_words` 只收台词中实际出现、且已按 Step 5 判定为生词的词**（等级 ≥ 学生等级或词表查不到）；脚本自动把台词里的生词变成悬停标注（拼音+HSK等级+释义）。`characters` 顺序决定气泡左右分列（第 1 位左、第 2 位右），遮句按钮按角色自动生成。
+2. 运行脚本（自动生成气泡双栏对话、遮句自练按钮、生词悬停标注、关键词/重点句型/生词表/学后任务/教师视图卡片，自包含可打印 HTML）：
    ```bash
    python3 <skill_root>/scripts/render_dialogue_html.py \
      --dialogue-json /mnt/user-data/workspace/dialogue.json \
@@ -226,11 +226,11 @@ Target users: English-speaking Chinese learners (international students).
 【学后任务】<任务>
 （English below for HSK1-3 with scaffolding）
 
-【超纲词注释】（★标记的词超过本等级词汇，请先解释再使用）
+【生词表】（★标记的词超过本等级词汇，请先解释再使用）
   ★春联★ 拼音：chūnlián　释义：Spring Festival couplets
 
 ### 📄 HTML 学习页
-File: dialogue_话题_HSKx.html — 从项目文件打开（气泡双栏对话 + 遮句自练 + 超纲词悬停标注，可打印）
+File: dialogue_话题_HSKx.html — 从项目文件打开（气泡双栏对话 + 遮句自练 + 生词悬停标注，可打印）
 ```
 
 ### 学生视图 · 问题卡
@@ -279,25 +279,25 @@ File: dialogue_话题_HSKx.html — 从项目文件打开（气泡双栏对话 +
 - <按等级列 3-5 条：语音、词汇使用、句子完整、交际达成……>
 
 【词汇核查】
-- 超纲词 x 个（★标注并注释）：<词1>（HSKx）、<词2>（超纲）……
+- 生词 x 个（★标注并注释）：<词1>（HSKx）、<词2>（生词）……
 ```
 
 ---
 
 ## 通用规则（级控）
 
-1. **词汇边界**：台词/问题/参考表达只用该等级及以下词汇；拿不准用 `hsk_lookup.py` 查，查不到即按超纲处理（宁标勿漏）
+1. **词汇边界**：台词/问题/参考表达只用该等级及以下词汇；拿不准用 `hsk_lookup.py` 查，查不到即按生词处理（宁标勿漏）
 2. **语法边界**：只用该等级及以下语法点（speaking_guide.md 第三节）；HSK1-2 不用把字句、被字句
 3. **句长边界**：HSK1 每句 ≤8 字 → HSK6 ≤35 字，逐级放宽
 4. **支架边界**：只支架指令性文本，学习目标文本（台词、关键词、参考表达）永不翻译
 5. **话题边界**：话题先定位话题树；树外话题映射到最接近支，不报错
-6. **HTML 交付**：场景对话默认交付 HTML 学习页（气泡双栏/遮句自练/超纲词悬停标注）；文本视图为兜底；问题卡与角色扮演卡保持文本视图
+6. **HTML 交付**：场景对话默认交付 HTML 学习页（气泡双栏/遮句自练/生词悬停标注）；文本视图为兜底；问题卡与角色扮演卡保持文本视图
 
 ## Error Handling
 
 - 输入为空或非中文：用英文请用户给中文
 - 没找到等级：问 "What is your HSK level?"
-- 脚本失败/词表缺失：不阻塞输出，材料照常给出（超纲词按"宁标勿漏"人工判断），并提示"词汇核查暂不可用"
+- 脚本失败/词表缺失：不阻塞输出，材料照常给出（生词按"宁标勿漏"人工判断），并提示"词汇核查暂不可用"
 - 话题不在话题树：映射到最接近话题支，不报错（见 Feature 1 Step 2）
 - HTML 生成失败：文本视图照常输出，注明"HTML 学习页暂不可用"；绝不编造 HTML、绝不展示原始报错（见 Feature 1 Step 8）
 - 用户要求其他技能范围（写作、语法分析等）：礼貌告知范围

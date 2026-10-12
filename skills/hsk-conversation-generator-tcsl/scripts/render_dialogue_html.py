@@ -2,14 +2,14 @@
 # -*- coding: utf-8 -*-
 """对话素材 HTML 学习页渲染器（HSK 对话材料生成器配套）。
 
-读取对话素材 JSON（标题、场景、人物、多轮对话、关键词、超纲词、学后任务、
+读取对话素材 JSON（标题、场景、人物、多轮对话、关键词、生词、学后任务、
 教师信息），生成一份自包含、可直接打印/下载的对话学习页 HTML：
 
   - 学生视图：气泡双栏对话（角色左右分列、颜色区分）+ 遮句自练模式
     （遮住任一角色，学生扮演另一方，点击占位卡查看原文）+ 关键词 +
-    重点句型 + 超纲词悬停标注（拼音+HSK等级+释义）+ 学后任务
+    重点句型 + 生词悬停标注（拼音+HSK等级+释义）+ 学后任务
   - 教师视图：教学信息、组织流程、评分要点
-  - 超纲词自动在台词中标注（.oc，悬停显示 title）
+  - 生词自动在台词中标注（.oc，悬停显示 title）
 
 用法:
   python3 render_dialogue_html.py --dialogue-json /path/dialogue.json \
@@ -30,7 +30,7 @@ dialogue.json 格式:
     {"speaker": "小王", "line": "是啊，阳光很暖和，我想先去买点菜。"}
   ],
   "keywords": ["天气", "阳光", "买菜", "做饭", "打扫", "擦", "散步"],
-  "over_syllabus": [
+  "new_words": [
     {"word": "西红柿", "pinyin": "xī hóng shì", "hsk": 5,
      "meaning": "tomato", "example": "那中午我做西红柿鸡蛋面，你觉得怎么样？"}
   ],
@@ -71,8 +71,8 @@ ROLE_STYLES = [
 ]
 
 
-def mark_over_syllabus(line, over_list):
-    """把台词中的超纲词替换为悬停标注 span（按词长降序，避免子串误伤）。"""
+def mark_new_words(line, over_list):
+    """把台词中的生词替换为悬停标注 span（按词长降序，避免子串误伤）。"""
     if not over_list:
         return esc(line)
     words = sorted(over_list, key=lambda o: len(o.get("word", "")), reverse=True)
@@ -84,7 +84,7 @@ def mark_over_syllabus(line, over_list):
         if not w or w not in out:
             continue
         title = "%s %s（HSK%s）%s" % (
-            w, o.get("pinyin", ""), o.get("hsk", "超纲"), o.get("meaning", "")
+            w, o.get("pinyin", ""), o.get("hsk", "大纲外"), o.get("meaning", "")
         )
         ph_id = "\x01%d\x02" % i
         ph.append((ph_id, '<span class="oc" title="%s">%s</span>' % (esc(title), esc(w))))
@@ -94,8 +94,8 @@ def mark_over_syllabus(line, over_list):
     return out
 
 
-def build_dialog_html(dlg, over_by_speaker):
-    """生成气泡对话 HTML。over_by_speaker: speaker -> 超纲词列表"""
+def build_dialog_html(dlg, new_by_speaker):
+    """生成气泡对话 HTML。new_by_speaker: speaker -> 生词列表"""
     characters = dlg.get("characters") or []
     role_of = {name: i for i, name in enumerate(characters)}
     n_roles = len(characters) or 2
@@ -107,7 +107,7 @@ def build_dialog_html(dlg, over_by_speaker):
             continue
         idx = role_of.get(sp, 0)
         st = ROLE_STYLES[idx % len(ROLE_STYLES)]
-        line_html = mark_over_syllabus(line, over_by_speaker.get(sp, []))
+        line_html = mark_new_words(line, new_by_speaker.get(sp, []))
         radius = "border-top-left-radius:4px" if st["side"] == "a" else "border-top-right-radius:4px"
         msgs.append(
             '<div class="msg %s"><span class="who" style="color:%s">%s</span>'
@@ -129,20 +129,20 @@ def build_switch_buttons(characters):
     return "".join(btns)
 
 
-def build_oc_card(over_syllabus):
-    """超纲词注释卡（含原文例句）。"""
-    if not over_syllabus:
+def build_oc_card(new_words):
+    """生词表卡（含原文例句）。"""
+    if not new_words:
         return ""
     rows = []
-    for o in over_syllabus:
+    for o in new_words:
         rows.append(
             '<div class="oc-row">· <b>%s</b> %s（HSK%s）%s<br><span class="oc-ex">原文：%s</span></div>'
             % (esc(o.get("word", "")), esc(o.get("pinyin", "")),
-               esc(str(o.get("hsk", "超纲"))), esc(o.get("meaning", "")),
+               esc(str(o.get("hsk", "大纲外"))), esc(o.get("meaning", "")),
                esc(o.get("example", "")))
         )
     return (
-        '<div class="card"><div class="card-title">📖 超纲词注释</div>'
+        '<div class="card"><div class="card-title">📖 生词表</div>'
         '<div class="gram">%s</div></div>' % "".join(rows)
     )
 
@@ -249,20 +249,20 @@ PAGE_CSS = """
 
 def render(dlg):
     characters = dlg.get("characters") or []
-    over_all = dlg.get("over_syllabus") or []
-    over_by_speaker = {}
-    for o in over_all:
+    new_all = dlg.get("new_words") or []
+    new_by_speaker = {}
+    for o in new_all:
         w = o.get("word", "")
         for turn in dlg.get("dialogue") or []:
             if w and w in turn.get("line", ""):
-                over_by_speaker.setdefault(turn.get("speaker", ""), []).append(o)
+                new_by_speaker.setdefault(turn.get("speaker", ""), []).append(o)
 
-    dialog_html = build_dialog_html(dlg, over_by_speaker)
+    dialog_html = build_dialog_html(dlg, new_by_speaker)
     btns = build_switch_buttons(characters)
     tags = "".join('<span class="tag">%s</span>' % esc(t) for t in (dlg.get("tags") or []))
     oc_tip = (
-        '<div class="oc-tip">台词中带 <span class="oc" title="示例：超纲词">⚠</span>'
-        ' 的词为超纲词（超过 %s），鼠标悬停查看拼音与释义。</div>'
+        '<div class="oc-tip">台词中带 <span class="oc" title="示例：生词">⚠</span>'
+        ' 的词为生词（%s 及以上），鼠标悬停查看拼音与释义。</div>'
         % esc(dlg.get("level_label", "本级"))
     )
     body = (
@@ -273,7 +273,7 @@ def render(dlg):
     )
     body += build_keyword_card(dlg)
     body += build_grammar_card(dlg)
-    body += build_oc_card(over_all)
+    body += build_oc_card(new_all)
     body += build_task_card(dlg)
     body += build_teacher_card(dlg)
 
@@ -336,7 +336,7 @@ def main():
         f.write(html)
     n_turns = len(dlg.get("dialogue") or [])
     print(json.dumps({"success": True, "path": out, "turns": n_turns,
-                      "over_syllabus": len(dlg.get("over_syllabus") or [])},
+                      "new_words": len(dlg.get("new_words") or [])},
                      ensure_ascii=False))
 
 

@@ -6,7 +6,7 @@ count: 6
 
 # HSK6 场景对话脚本（6篇）
 
-本文件为场景对话的参考样例。生成新对话时：对话只用该等级词汇和语法（超纲词★标注+拼音+母语翻译）；台词简短自然，贴近真实交际；结尾附学后任务。
+本文件为场景对话的参考样例。生成新对话时：对话只用该等级词汇和语法（生词★标注+拼音+母语翻译）；台词简短自然，贴近真实交际；结尾附学后任务。
 
 ## 1. 《人工智能会取代人类吗？》
 
@@ -29,7 +29,7 @@ count: 6
 
 **关键词**: 人工智能、取代、就业、技能、时代
 
-**超纲词**: ★重复性★ (chóngfùxìng) = repetitive (in nature)；★终身学习★ (zhōngshēn xuéxí) = lifelong learning
+**生词**: ★重复性★ (chóngfùxìng) = repetitive (in nature)；★终身学习★ (zhōngshēn xuéxí) = lifelong learning
 
 **学后任务**: 讨论：人工智能时代，你打算学习什么新技能？为什么？
 
@@ -55,7 +55,7 @@ count: 6
 
 **关键词**: 房价、政策、需求、稳定、资源
 
-**超纲词**: ★出台★ (chūtái) = to introduce (policies)
+**生词**: ★出台★ (chūtái) = to introduce (policies)
 
 **学后任务**: 讨论：买房和租房，你更赞成哪个？说明理由。
 
@@ -81,7 +81,7 @@ count: 6
 
 **关键词**: 历史、繁荣、时期、当时、学习
 
-**超纲词**: ★繁荣★ (fánróng) = prosperous, booming
+**生词**: ★繁荣★ (fánróng) = prosperous, booming
 
 **学后任务**: 用中文介绍一个你感兴趣的历史时期或历史人物。
 
@@ -107,7 +107,7 @@ count: 6
 
 **关键词**: 老龄化、养老、制度、健康、规划
 
-**超纲词**: ★老龄化★ (lǎolínghuà) = aging of the population；★银发经济★ (yínfà jīngjì) = silver economy (products/services for the elderly)
+**生词**: ★老龄化★ (lǎolínghuà) = aging of the population；★银发经济★ (yínfà jīngjì) = silver economy (products/services for the elderly)
 
 **学后任务**: 讨论：你身边有老年人吗？你觉得社会应该怎样关心老年人？
 
@@ -133,7 +133,7 @@ count: 6
 
 **关键词**: 文化差异、委婉、难堪、适应、交流
 
-**超纲词**: ★委婉★ (wěiwǎn) = tactful, euphemistic；★难堪★ (nánkān) = embarrassed, awkward；★字面★ (zìmiàn) = literal meaning (of words)
+**生词**: ★委婉★ (wěiwǎn) = tactful, euphemistic；★难堪★ (nánkān) = embarrassed, awkward；★字面★ (zìmiàn) = literal meaning (of words)
 
 **学后任务**: 讨论：你有没有遇到过文化差异？说说你的经历。
 
@@ -159,7 +159,7 @@ count: 6
 
 **关键词**: 大数据、隐私、数据、分享、平衡
 
-**超纲词**: ★隐私★ (yǐnsī) = privacy；★无处不在★ (wúchùbùzài) = ubiquitous, everywhere
+**生词**: ★隐私★ (yǐnsī) = privacy；★无处不在★ (wúchùbùzài) = ubiquitous, everywhere
 
 **学后任务**: 讨论：为了保护隐私，你平时会注意什么？
 

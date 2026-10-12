@@ -6,7 +6,7 @@ count: 6
 
 # HSK5 场景对话脚本（6篇）
 
-本文件为场景对话的参考样例。生成新对话时：对话只用该等级词汇和语法（超纲词★标注+拼音+母语翻译）；台词简短自然，贴近真实交际；结尾附学后任务。
+本文件为场景对话的参考样例。生成新对话时：对话只用该等级词汇和语法（生词★标注+拼音+母语翻译）；台词简短自然，贴近真实交际；结尾附学后任务。
 
 ## 1. 《网上购物会取代实体店吗？》
 
@@ -29,7 +29,7 @@ count: 6
 
 **关键词**: 取代、实体店、优势、选择、价格
 
-**超纲词**: ★亲眼★ (qīnyǎn) = with one's own eyes
+**生词**: ★亲眼★ (qīnyǎn) = with one's own eyes
 
 **学后任务**: 小组讨论：你买东西更喜欢网购还是去实体店？说明理由。
 
@@ -55,7 +55,7 @@ count: 6
 
 **关键词**: 才艺、尊重、兴趣、坚持、成长
 
-**超纲词**: ★起跑线★ (qǐpǎoxiàn) = starting line (of a race), metaphor for life's starting point
+**生词**: ★起跑线★ (qǐpǎoxiàn) = starting line (of a race), metaphor for life's starting point
 
 **学后任务**: 辩论：你觉得孩子小时候应该多学才艺吗？说出两个理由。
 
@@ -106,7 +106,7 @@ count: 6
 
 **关键词**: 垃圾、分类、支持、宣传、配合
 
-**超纲词**: ★人人有责★ (rénrén yǒu zé) = everyone is responsible
+**生词**: ★人人有责★ (rénrén yǒu zé) = everyone is responsible
 
 **学后任务**: 小组讨论：你支持垃圾分类吗？说说你的看法。
 
@@ -156,7 +156,7 @@ count: 6
 
 **关键词**: 春节、习俗、红包、好运、过年
 
-**超纲词**: ★春联★ (chūnlián) = Spring Festival couplets；★鞭炮★ (biānpào) = firecrackers
+**生词**: ★春联★ (chūnlián) = Spring Festival couplets；★鞭炮★ (biānpào) = firecrackers
 
 **学后任务**: 用中文介绍一个你们国家的重要节日，说说人们做什么。
 
