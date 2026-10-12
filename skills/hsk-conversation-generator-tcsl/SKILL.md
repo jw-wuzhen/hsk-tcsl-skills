@@ -1,6 +1,6 @@
 ---
 name: hsk-conversation-generator-tcsl
-description: "基于新版HSK大纲（2026年7月实施）的对话材料生成器，面向国际中文学习者（TCSL）与教师。生成三种口语教学材料：场景对话脚本、话题问题卡（热身/核心/拓展三级递进）、角色扮演任务卡（A/B角色+任务目标+语言要求+参考表达）。任意话题均可处理：先在大纲话题树中定位，再按等级语言边界生成；超纲词自动★标注并附拼音+母语翻译；HSK1-3可带英文支架。当用户需要HSK口语练习、对话教学材料、课堂讨论问题、角色扮演活动时调用。 | A dialogue-material generator built on the new HSK syllabus (effective July 2026) for international Chinese learners (TCSL) and teachers. Produces scene dialogue scripts, topic discussion cards, and role-play task cards for any topic at any level."
+description: "基于新版HSK大纲（2026年7月实施）的对话材料生成器，面向国际中文学习者（TCSL）与教师。生成三种口语教学材料：场景对话脚本、话题问题卡（热身/核心/拓展三级递进）、角色扮演任务卡（A/B角色+任务目标+语言要求+参考表达）。任意话题均可处理：先在大纲话题树中定位，再按等级语言边界生成；超纲词自动★标注并附拼音+母语翻译；场景对话默认交付 HTML 学习页（气泡双栏对话 + 遮句自练 + 超纲词悬停标注）；HSK1-3可带英文支架。当用户需要HSK口语练习、对话教学材料、课堂讨论问题、角色扮演活动时调用。 | A dialogue-material generator built on the new HSK syllabus (effective July 2026) for international Chinese learners (TCSL) and teachers. Produces scene dialogue scripts, topic discussion cards, and role-play task cards for any topic at any level."
 ---
 
 # HSK 对话材料生成器 — TCSL 版 v2.0
@@ -98,6 +98,53 @@ Target users: English-speaking Chinese learners (international students).
 
 按"输出模板"输出学生视图 + 教师视图。
 
+> **场景对话（dialogue_script）的稳定交付形态**：在文本视图之外，**同时生成对话 HTML 学习页**（气泡双栏对话 + 遮句自练 + 超纲词悬停标注）——这是场景对话的默认交付形态，见 Step 8。只有用户明确"只要文本/不要页面"时才停在文本视图。问题卡与角色扮演卡保持文本视图。
+
+### Step 8: 生成 HTML 学习页（仅场景对话，自动完成，禁止手工写 HTML）
+
+**⚠️ 不要手工写 HTML——把对话素材整理成 dialogue.json，交给脚本生成文件。**
+
+1. 把场景对话的完整素材保存为 `/mnt/user-data/workspace/dialogue.json`，格式：
+   ```json
+   {
+     "title": "周末的一天",
+     "hsk_level": 4,
+     "level_label": "HSK4",
+     "tags": ["HSK4", "生活日常", "居家生活", "8轮 · 2人"],
+     "scene": "周末上午，家里",
+     "characters": ["小李", "小王"],
+     "topic_tree": "日常生活 > 家庭生活 > 居家生活",
+     "functions": "商量安排、表达感受、提出建议",
+     "grammar_points": ["先……再……：先去买点菜再做饭", "把字句：把房间打扫一下"],
+     "dialogue": [
+       {"speaker": "小李", "line": "你起床啦？今天天气真好。"},
+       {"speaker": "小王", "line": "是啊，阳光很暖和，我想先去买点菜。"}
+     ],
+     "keywords": ["天气", "阳光", "买菜", "做饭", "打扫", "擦", "散步"],
+     "over_syllabus": [
+       {"word": "西红柿", "pinyin": "xī hóng shì", "hsk": 5, "meaning": "tomato",
+        "example": "那中午我做西红柿鸡蛋面，你觉得怎么样？"}
+     ],
+     "after_tasks": ["用中文说说：周末你一般在家做什么？"],
+     "teaching": {
+       "level_desc": "HSK4（CEFR B1+，词汇量 2000 词，书写字 400 字）",
+       "speaking_ability": "能比较流利地讲述家庭生活等话题；能与人交流看法",
+       "org_flow": "热身（5分钟）→ 核心活动（15分钟）→ 拓展/表演（10分钟）→ 总结",
+       "rubric": ["语音清晰、句子自然", "词汇以本级词为主", "交际达成"]
+     }
+   }
+   ```
+   **注意：`over_syllabus` 只收台词中实际出现、且已按 Step 5 判定为超纲的词**（等级 > 学生等级或词表查不到）；脚本自动把台词里的超纲词变成悬停标注（拼音+HSK等级+释义）。`characters` 顺序决定气泡左右分列（第 1 位左、第 2 位右），遮句按钮按角色自动生成。
+2. 运行脚本（自动生成气泡双栏对话、遮句自练按钮、超纲词悬停标注、关键词/重点句型/超纲词注释/学后任务/教师视图卡片，自包含可打印 HTML）：
+   ```bash
+   python3 <skill_root>/scripts/render_dialogue_html.py \
+     --dialogue-json /mnt/user-data/workspace/dialogue.json \
+     --output /mnt/user-data/outputs/dialogue_话题_HSKx.html
+   ```
+   脚本路径不可用时：把 `render_dialogue_html.py` 复制到 `/mnt/user-data/workspace/`，从工作区运行。
+3. 调用 `present_files(path="/mnt/user-data/outputs/dialogue_话题_HSKx.html")` 把 HTML 文件展示给用户。
+4. HTML 生成失败时：文本视图照常输出，并注明"HTML 学习页暂不可用"。**绝不编造 HTML 内容，绝不展示原始报错信息。**
+
 ---
 
 ## Feature 2: 话题问题卡
@@ -181,6 +228,9 @@ Target users: English-speaking Chinese learners (international students).
 
 【超纲词注释】（★标记的词超过本等级词汇，请先解释再使用）
   ★春联★ 拼音：chūnlián　释义：Spring Festival couplets
+
+### 📄 HTML 学习页
+File: dialogue_话题_HSKx.html — 从项目文件打开（气泡双栏对话 + 遮句自练 + 超纲词悬停标注，可打印）
 ```
 
 ### 学生视图 · 问题卡
@@ -241,6 +291,7 @@ Target users: English-speaking Chinese learners (international students).
 3. **句长边界**：HSK1 每句 ≤8 字 → HSK6 ≤35 字，逐级放宽
 4. **支架边界**：只支架指令性文本，学习目标文本（台词、关键词、参考表达）永不翻译
 5. **话题边界**：话题先定位话题树；树外话题映射到最接近支，不报错
+6. **HTML 交付**：场景对话默认交付 HTML 学习页（气泡双栏/遮句自练/超纲词悬停标注）；文本视图为兜底；问题卡与角色扮演卡保持文本视图
 
 ## Error Handling
 
@@ -248,5 +299,6 @@ Target users: English-speaking Chinese learners (international students).
 - 没找到等级：问 "What is your HSK level?"
 - 脚本失败/词表缺失：不阻塞输出，材料照常给出（超纲词按"宁标勿漏"人工判断），并提示"词汇核查暂不可用"
 - 话题不在话题树：映射到最接近话题支，不报错（见 Feature 1 Step 2）
+- HTML 生成失败：文本视图照常输出，注明"HTML 学习页暂不可用"；绝不编造 HTML、绝不展示原始报错（见 Feature 1 Step 8）
 - 用户要求其他技能范围（写作、语法分析等）：礼貌告知范围
 - 绝不向用户展示原始报错信息
