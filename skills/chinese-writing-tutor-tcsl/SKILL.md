@@ -135,14 +135,14 @@ Check for these common issues in zuowen.com essays:
 4. Call `present_files(path="/mnt/user-data/outputs/essay_话题_HSKx.html")` to show file in user's project list.
 
 The HTML page automatically includes:
-- **Proper essay format**: centered title, every paragraph starts with two-space indent (首行空两格) — standard Chinese composition format for students to imitate
+- **Proper essay format**: title indented four spaces (标题空四格), every paragraph starts with two-space indent (首行空两格) — standard Chinese composition format for students to imitate
 - **Composition-paper modes**: switch buttons at top — Reading mode (annotated), 方格 composition paper (grid, one character per cell, KaiTi font), 横线 ruled paper — restoring the real writing scenario
 - **Key Words & Sentences (重点词句)**: highlighted in text + cards below with pinyin, HSK level, English definition, explanation and the original example sentence from the essay
-- **New Words List (生词表)**: auto-collected by the script.
+- **New Words List (生词表)**: auto-curated by the script — only the most valuable words at the user's level and above, max 12.
 
 **⚠️ New-word definition (unified, must follow exactly):**
-- New words = words whose HSK level is **equal to or above** the user's level.
-- Example: user is HSK5 → HSK5 AND HSK6 words are new words. HSK1-4 words are NEVER new words.
+- Candidates = words whose HSK level is **equal to or above** the user's level. Words below the user's level are NEVER new words.
+- The script then **curates by learning value (max 12)**: pure function words (pronouns/particles/conjunctions/prepositions/measure words) are skipped, words already taught in Key Words & Sentences are not repeated, and words nearer the user's level rank first, then longer words (idioms), then words earlier in the essay.
 - The script collects this automatically from HSK vocab CSVs — do NOT manually build the new-words list.
 - Each new word card shows: word, pinyin, HSK level, POS (full English), English definition, original example sentence from the essay.
 
@@ -151,7 +151,7 @@ The HTML page automatically includes:
 ## 📚 Essay Recommendation (HSKx)
 
 ### 《title》(约 xxx 字)
-(essay full text in Chinese, title centered, paragraphs with two-space indent)
+(essay full text in Chinese, title indented four spaces, paragraphs with two-space indent)
 📍 Source: zuowen.com URL
 
 ### 💡 Key Words & Sentences (重点词句)
@@ -159,7 +159,7 @@ The HTML page automatically includes:
 - (5-8 total)
 
 ### 📖 New Words List (生词表)
-(Words at HSKx level and above, auto-listed in the HTML page)
+(The most valuable words at HSKx level and above, curated to at most 12 by the script in the HTML page)
 
 ### ✍️ Writing Suggestion
 (English)
