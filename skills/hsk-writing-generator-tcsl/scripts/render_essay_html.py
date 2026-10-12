@@ -354,7 +354,7 @@ def build_teacher_section(tj, essay_title_html, paras_html, expr_html, paragraph
                 '<tr><td class="star">★%s★</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
                 % (esc(w), esc(g.get("pinyin", "")), esc(g.get("pos", "") or ""), esc(g.get("meaning", "")), ex_html)
             )
-        note = tj.get("out_of_syllabus_note") or "生词超过本等级词汇，请先解释再使用"
+        note = tj.get("out_of_syllabus_note") or "生词为本等级及以上词汇（含词表查不到的词），请先解释再使用"
         blocks.append(
             '<div class="card white"><div class="card-title">📖 生词表</div>'
             '<div class="note">%s</div>'
