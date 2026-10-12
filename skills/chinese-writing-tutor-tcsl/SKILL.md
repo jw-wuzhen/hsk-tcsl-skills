@@ -108,7 +108,7 @@ Check for these common issues in zuowen.com essays:
 
 ### Step 4: Analyze & Recommend
 
-- Extract 5-8 useful expressions with English explanations (from corrected essay)
+- Extract 5-8 key words & sentences (重点词句) with English explanations from the corrected essay; each one must include the original sentence from the essay where it appears
 - 1 writing suggestion in English
 - Output using Template B
 
@@ -116,8 +116,8 @@ Check for these common issues in zuowen.com essays:
 
 **⚠️ Do NOT manually annotate words in context — this causes token overflow. Use the script instead.**
 
-1. Save **corrected** essay text to `/mnt/user-data/workspace/essay_text.txt`
-2. Save good expressions to `/mnt/user-data/workspace/expr.json` as JSON array:
+1. Save **corrected** essay text to `/mnt/user-data/workspace/essay_text.txt` (keep the title on the first line, paragraphs separated by newlines)
+2. Save key words & sentences to `/mnt/user-data/workspace/expr.json` as JSON array:
    ```json
    [{"expression":"举足轻重","pinyin":"jǔ zú qīng zhòng","hsk":6,"en_def":"play a decisive role","explanation":"This idiom means...","example":"The original sentence from the essay containing this expression"}]
    ```
@@ -134,25 +134,38 @@ Check for these common issues in zuowen.com essays:
 
 4. Call `present_files(path="/mnt/user-data/outputs/essay_话题_HSKx.html")` to show file in user's project list.
 
-The script automatically: loads HSK1-6 vocabulary CSVs, segments essay text (longest-match), annotates each word with pinyin/HSK level/English definition, highlights good expressions, generates styled HTML.
+The HTML page automatically includes:
+- **Proper essay format**: centered title, every paragraph starts with two-space indent (首行空两格) — standard Chinese composition format for students to imitate
+- **Composition-paper modes**: switch buttons at top — Reading mode (annotated), 方格 composition paper (grid, one character per cell, KaiTi font), 横线 ruled paper — restoring the real writing scenario
+- **Key Words & Sentences (重点词句)**: highlighted in text + cards below with pinyin, HSK level, English definition, explanation and the original example sentence from the essay
+- **New Words List (生词表)**: auto-collected by the script.
+
+**⚠️ New-word definition (unified, must follow exactly):**
+- New words = words whose HSK level is **equal to or above** the user's level.
+- Example: user is HSK5 → HSK5 AND HSK6 words are new words. HSK1-4 words are NEVER new words.
+- The script collects this automatically from HSK vocab CSVs — do NOT manually build the new-words list.
+- Each new word card shows: word, pinyin, HSK level, POS (full English), English definition, original example sentence from the essay.
 
 ### Output Template B
 ```
 ## 📚 Essay Recommendation (HSKx)
 
 ### 《title》(约 xxx 字)
-(essay full text in Chinese)
+(essay full text in Chinese, title centered, paragraphs with two-space indent)
 📍 Source: zuowen.com URL
 
-### 💡 Useful Expressions
-- Expression 1: English explanation
+### 💡 Key Words & Sentences (重点词句)
+- Expression 1: Chinese expression — English explanation + original example sentence
 - (5-8 total)
+
+### 📖 New Words List (生词表)
+(Words at HSKx level and above, auto-listed in the HTML page)
 
 ### ✍️ Writing Suggestion
 (English)
 
 ### 📄 HTML Display Page
-File: essay_话题_HSKx.html — open from project files.
+File: essay_话题_HSKx.html — open from project files. Includes composition-paper modes, key expressions and new words list.
 ```
 
 ## Error Handling
