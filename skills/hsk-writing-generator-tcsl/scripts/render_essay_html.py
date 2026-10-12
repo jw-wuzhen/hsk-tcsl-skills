@@ -451,6 +451,8 @@ PAGE_CSS = """
   /* 方格纸：字帖米字格——每个格子含十字+两条对角线虚线（8部分），SVG data URI 纯前端实现 */
   .cell{display:inline-block;width:26px;height:26px;margin:0 -1px 2px 0;border:1px solid #a9bcd4;text-align:center;text-indent:0;line-height:26px;font-size:20px;vertical-align:top;background-color:#fff;background-image:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='26'%20height='26'%3E%3Cline%20x1='13'%20y1='0'%20x2='13'%20y2='26'%20stroke='%23d9e2f0'%20stroke-width='1'%20stroke-dasharray='2%202'/%3E%3Cline%20x1='0'%20y1='13'%20x2='26'%20y2='13'%20stroke='%23d9e2f0'%20stroke-width='1'%20stroke-dasharray='2%202'/%3E%3Cline%20x1='0'%20y1='0'%20x2='26'%20y2='26'%20stroke='%23d9e2f0'%20stroke-width='1'%20stroke-dasharray='2%202'/%3E%3Cline%20x1='26'%20y1='0'%20x2='0'%20y2='26'%20stroke='%23d9e2f0'%20stroke-width='1'%20stroke-dasharray='2%202'/%3E%3C/svg%3E");background-size:100% 100%;background-repeat:no-repeat;border-radius:0;overflow:hidden}
   .cell.blank{background:#f4f8fd;border-style:dashed}
+  /* 方格纸行容器：span 块级化（p 内不能放 div），每行固定 cols 个格子（gridify 填充），行行补满 */
+  .crow{display:block;white-space:nowrap;line-height:28px}
   .comic{background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:14px;text-align:center}
   .comic img{max-width:100%;border-radius:6px;border:1px solid #eee}
   .comic svg{max-width:100%;height:auto}
@@ -579,11 +581,9 @@ function setPaper(cls){
   if(!el)return;
   if(essayOrigHTML===null){essayOrigHTML=el.innerHTML;}
   if(cls==='paper-grid'){
-    var t=document.createElement('div');
-    t.innerHTML=essayOrigHTML;
-    gridify(t);
-    el.innerHTML=t.innerHTML;
+    el.innerHTML=essayOrigHTML;
     el.className='essay';
+    gridify(el); /* 直接在页面内容器上执行，clientWidth 才是真实行宽 */
   }else if(cls==='paper-line'){
     el.innerHTML=essayOrigHTML;
     el.className='essay paper-line';
@@ -599,35 +599,53 @@ function setPaper(cls){
   }
 }
 function gridify(root){
+  /* 方格纸：固定网格——按容器宽度算出每行格子数，逐字填充；
+     每行补满格子（末行也用空格子补齐），段落开头空两格，还原作文纸书写场景 */
   var paras=root.querySelectorAll('.essay-para');
   for(var pi=0;pi<paras.length;pi++){
     var p=paras[pi];
-    p.style.textAlign='left'; /* justify 与 inline-block 混用在部分内核导致字溢出格子，方格模式强制左对齐 */
-    var b1=document.createElement('span');b1.className='cell blank';b1.innerHTML='&nbsp;';
-    var b2=b1.cloneNode(true);
-    p.insertBefore(b2,p.firstChild);
-    p.insertBefore(b1,p.firstChild);
-    var targets=[];
-    (function rec(n){
-      for(var i=0;i<n.childNodes.length;i++){
-        var c=n.childNodes[i];
-        if(c.nodeType===3){targets.push(c);}
-        else if(c.nodeType===1&&c.tagName==='SPAN'){targets.push(c);}
-        else{rec(c);}
-      }
-    })(p);
-    for(var ti=0;ti<targets.length;ti++){
-      var t=targets[ti],frag=document.createDocumentFragment();
-      if(t.nodeType===3){
-        splitIntoCells(t.nodeValue,null,frag);
-      }else{
-        var title=t.getAttribute('title')||'';
-        var color='',st=t.getAttribute('style')||'',m=st.match(/color:([^;]+)/);
+    p.style.textAlign='left';
+    p.style.textIndent='0';
+    var cols=Math.floor(p.clientWidth/25); /* 有效格宽约25px（26px格宽-1px负边距） */
+    if(cols<2){cols=2;}
+    var chars=[];
+    var walker=document.createTreeWalker(p,NodeFilter.SHOW_TEXT,{acceptNode:function(n){return n.nodeValue&&n.nodeValue.length?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT;}});
+    var nodes=[];var w;
+    while(w=walker.nextNode()){nodes.push(w);}
+    for(var ni=0;ni<nodes.length;ni++){
+      var node=nodes[ni];
+      var sp=node.parentNode,title='',color='';
+      while(sp&&sp.nodeType===1&&sp.tagName!=='SPAN'){sp=sp.parentNode;}
+      if(sp&&sp.nodeType===1){
+        title=sp.getAttribute('title')||'';
+        var st=sp.getAttribute('style')||'',m=st.match(/color:([^;]+)/);
         if(m){color=m[1];}
-        splitIntoCells(t.textContent,{title:title,color:color},frag);
       }
-      t.parentNode.replaceChild(frag,t);
+      var v=node.nodeValue;
+      for(var ci=0;ci<v.length;ci++){
+        var ch=v[ci];
+        if(ch===' '||ch==='\t'||ch==='\\n'||ch==='\\r'){continue;}
+        chars.push({ch:ch,title:title,color:color});
+      }
     }
+    if(!chars.length){continue;}
+    var out=[];
+    for(var b=0;b<2;b++){out.push({blank:1,title:'',color:''});} /* 段首空两格 */
+    for(var i=0;i<chars.length;i++){out.push(chars[i]);}
+    var html='';
+    for(var r=0;r<out.length;r+=cols){
+      var rowHtml='';
+      for(var c=0;c<cols;c++){
+        var it=out[r+c];
+        if(!it){it={blank:1,title:'',color:''};}
+        var cls=it.blank?'cell blank':'cell';
+        var st2=it.color?('color:'+it.color):'';
+        var tit=it.title?(' title="'+escHtml(it.title)+'"'):'';
+        rowHtml+='<span class="'+cls+'"'+tit+(st2?' style="'+st2+'"':'')+'>'+(it.blank?'&nbsp;':escHtml(it.ch))+'</span>';
+      }
+      html+='<span class="crow">'+rowHtml+'</span>';
+    }
+    p.innerHTML=html;
   }
 }
 function splitIntoCells(txt,meta,frag){
