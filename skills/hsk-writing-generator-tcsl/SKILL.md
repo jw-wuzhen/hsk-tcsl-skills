@@ -107,7 +107,7 @@ Target users: English-speaking Chinese learners (international students).
 1. 先读 `<skill_root>/reference/writing_guide.md` 第三、四节确定该等级写作能力与语法边界
 2. 参照 `<skill_root>/reference/model_essays/<type>.md` 中同题型范文的结构与风格
 3. 用本等级词汇书写（拿不准的词查 `hsk_lookup.py`，见 Step 5）
-4. 按题型结构组织：短文=开头-主体-结尾；看图=四格图推进；引语=理解-经历-点题；应用文=文体格式（通知/启事有标题+正文+落款，邮件有称呼+正文+署名）；议论文=观点-理由-例子-结论
+4. 按题型结构组织：短文=开头-主体-结尾；看图=四格图推进；引语=理解-经历-点题；应用文=文体格式（通知/启事有标题+正文+落款，邮件有称呼+正文+署名）；议论文=观点-理由-例子-结论。**范文必须：① 起一个贴合话题的标题；② 正文分成 3-4 个自然段**（每段一个中心意思），不要整篇写成一段。
 
 ### Step 4: 语法检查与修正
 
@@ -144,12 +144,12 @@ Target users: English-speaking Chinese learners (international students).
 **⚠️ 不要手工给句子中的词加注——这会导致 token 溢出。一律用脚本生成。**
 **⚠️ 不要自己写 HTML——把范文文本交给脚本，由脚本生成文件。**
 
-1. 把**修正后的范文正文**保存到 `/mnt/user-data/workspace/essay_text.txt`（**纯正文，不加"图1/图2"等标注**；图序信息写在 teacher.json 的 `structure` 字段里）
-2. 把好词好句（5-8 个）保存到 `/mnt/user-data/workspace/expr.json`，JSON 数组格式：
+1. 把**修正后的范文**保存到 `/mnt/user-data/workspace/essay_text.txt`，格式为：**第一行 = 标题**（贴合话题，不加书名号）；**其后每一行 = 一个自然段**（开头-主体-结尾，分 3-4 段，不要整篇挤成一段；不加"图1/图2"等标注；图序信息写在 teacher.json 的 `structure` 字段里）。渲染时标题自动居中、正文每段首行自动空两格，模拟日常作文书写格式。
+2. 把重点词句（5-8 个，**必须是范文正文中实际出现的表达**）保存到 `/mnt/user-data/workspace/expr.json`，JSON 数组格式：
    ```json
-   [{"expression":"举足轻重","pinyin":"jǔ zú qīng zhòng","hsk":6,"en_def":"play a decisive role","explanation":"This idiom means...","example":"范文中的原句"}]
+   [{"expression":"真是","pinyin":"zhēn shì","hsk":7,"en_def":"really; indeed","explanation":"","example":"你真是个懂礼貌的好孩子。"}]
    ```
-   **注意：`example` 字段填范文中包含该表达的原句；留空则脚本自动从范文提取。**
+   **注意：`example` 填范文中包含该表达的原句（含省略号的表达如"虽然……但是……"也能自动匹配）；留空则脚本自动从范文提取。重点词句必须**实际出现在范文正文**，若范文没有该表达，学习页会给出提示，请勿收录范文外的词句。**
 3. 把教师元数据保存到 `/mnt/user-data/workspace/teacher.json`（把输出模板"学生视图+教师视图"里的结构化信息填进去）：
    ```json
    {
@@ -165,12 +165,13 @@ Target users: English-speaking Chinese learners (international students).
      "rubric":["内容完整（四图要素齐全）","语言准确（本级词汇语法）","结构清晰（起因-经过-结果）"],
      "teaching_tips":["先让学生看漫画编故事，再给范文","★超纲词先讲解再让学生读"],
      "exam_note":"HSK5 看图作文要求…",
-     "glossary":[{"word":"外滩","pinyin":"wàitān","meaning":"Bund (Shanghai riverside)"}],
+     "glossary":[{"word":"真是","pinyin":"zhēn shì","meaning":"really; indeed（7级词，示例）"}],
      "out_of_syllabus_note":"超纲词 x 个已★标注，请先解释再使用"
    }
    ```
    **注意：缺字段没问题（脚本会跳过空卡片），但题目、题型、字数、结构、评分要点这些核心字段务必填。**
-4. 运行脚本（脚本自动按 2026 词表分段、标注每个词的 HSK 等级与拼音、高亮好词好句，生成**学生练习版+教师备课版双视图、带打印/下载按钮**的自包含 HTML；**看图作文时嵌入四格漫画**）：
+   **⚠️ 生词表一致性（必守）：`glossary` 只收范文中**实际出现**、且正文中已用 ★ 标注的词**，逐一对齐；严禁收录范文中没有的词（如示例中的"真是"必须出现在范文正文里）。
+4. 运行脚本（脚本自动按 2026 词表分段、标注每个词的 HSK 等级与拼音、高亮重点词句，生成**学生练习版+教师备课版双视图、带打印/下载按钮**的自包含 HTML；**看图作文时嵌入四格漫画**）：
    ```bash
    python3 /mnt/skills/user/hsk-writing-generator-tcsl/v2.0.7/scripts/render_essay_html.py \
      --essay-file /mnt/user-data/workspace/essay_text.txt \
@@ -284,10 +285,10 @@ python3 /mnt/skills/user/hsk-writing-generator-tcsl/v2.0.7/scripts/comic_render.
 <关键词1、关键词2、……>
 
 ### 📝 参考范文（约 xxx 字）
-<范文正文，超纲词★标注>
+<标题居中；正文每段首行空两格（日常作文格式）；超纲词★标注>
 
 【超纲词注释】（★标记的词超过本等级词汇，请先解释再使用）
-- ★外滩★ 拼音：wàitān　释义：Bund (Shanghai riverside)
+- ★真是★ 拼音：zhēn shì　释义：really; indeed
 
 ### 📄 HTML 学习页
 File: essay_话题_HSKx.html — 从项目文件打开（已自动按 HSK 等级标注拼音与释义，可打印/下载）
@@ -305,7 +306,7 @@ File: essay_话题_HSKx.html — 从项目文件打开（已自动按 HSK 等级
 对应考试：<题型> ≥<字数>字
 
 【参考范文】（约 xxx 字）
-<范文正文>
+<标题 + 分段正文，格式同学生日常作文>
 
 【范文结构】
 <开头-主体-结尾 或 图1→图4 的推进说明>

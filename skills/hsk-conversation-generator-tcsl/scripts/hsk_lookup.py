@@ -17,6 +17,7 @@
 import argparse
 import json
 import os
+import re
 import sys
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -33,16 +34,23 @@ def default_data_path():
     return None
 
 
+def _level_of_key(k):
+    """从等级键名解析等级数字，兼容 "hsk1"~"hsk6" 与合并键 "hsk7-9"（取主数字 7）"""
+    s = k.lower().replace("hsk", "").strip()
+    m = re.match(r"^(\d+)", s)
+    return int(m.group(1)) if m else 0
+
+
 def load_vocab(path):
     """加载词表，统一为 {词: 等级(整数)}"""
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
     word2level = {}
     if isinstance(data, dict):
-        # 格式1: {"hsk1": [...], "hsk7": []} 或 格式2: {"词": 1}
+        # 格式1: {"hsk1": [...], "hsk7-9": [...]} 或 格式2: {"词": 1}
         for k, v in data.items():
             if isinstance(v, list):
-                lv = int(k.replace("hsk", "").replace("HSK", "")) if k.lower().startswith("hsk") else 0
+                lv = _level_of_key(k)
                 for w in v:
                     w = w.strip()
                     if w and (w not in word2level or word2level[w] > lv):

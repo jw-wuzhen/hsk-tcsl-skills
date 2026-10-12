@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """范文 HTML 学习页渲染器（2026 新大纲口径）。
 
-读取范文正文 + 好词好句 + 教师元数据（teacher.json），按 reference/hsk_vocab.json
+读取范文正文 + 重点词句 + 教师元数据（teacher.json），按 reference/hsk_vocab.json
 （2026 版 HSK 分级词表）做最长匹配分词，给每个词标注 HSK 等级与拼音，
 生成一份完整、自包含、可直接打印/下载的教学素材 HTML：
 
@@ -20,7 +20,7 @@
 参数:
   --essay-text     范文正文（与 --essay-file 二选一）
   --essay-file     范文文本文件路径
-  --expressions-json  好词好句 JSON 数组（可选）：[{"expression","pinyin","hsk","en_def","explanation","example"}]
+  --expressions-json  重点词句 JSON 数组（可选）：[{"expression","pinyin","hsk","en_def","explanation","example"}]
   --teacher-json   教师元数据 JSON（可选，提供则渲染完整双视图教学素材）：
       {"exam_name","exam_type","topic","level_label","min_chars","time_limit",
        "question","guiding_questions":[],"patterns":[],"connectors":[],
@@ -60,6 +60,13 @@ def esc(s):
     return _html.escape(str(s), quote=True)
 
 
+def _level_of_key(k):
+    """从等级键名解析等级数字，兼容 "hsk1"~"hsk6" 与合并键 "hsk7-9"（取主数字 7）"""
+    s = k.lower().replace("hsk", "").strip()
+    m = re.match(r"^(\d+)", s)
+    return int(m.group(1)) if m else 0
+
+
 def load_vocab(path):
     """{词: 等级(整数)}，兼容 {"hsk1": [...]} 与 {"词": 1} 两种格式"""
     with open(path, encoding="utf-8") as f:
@@ -68,7 +75,7 @@ def load_vocab(path):
     if isinstance(data, dict):
         for k, v in data.items():
             if isinstance(v, list):
-                lv = int(k.replace("hsk", "").replace("HSK", "")) if k.lower().startswith("hsk") else 0
+                lv = _level_of_key(k)
                 for w in v:
                     w = w.strip()
                     if w and (w not in word2level or word2level[w] > lv):
@@ -137,8 +144,34 @@ def segment(text, trie, char_pinyin):
     return tokens
 
 
-def build_essay_html(text, vocab, char_pinyin, expressions):
-    """带 HSK 等级着色 + 拼音 + 好词好句高亮的范文正文 HTML"""
+def split_essay(text):
+    """解析范文文本：第一行（非空）为标题，其余行为正文段落（空行/换行分隔）。
+
+    若第一行过长（>30 字），视为无标题，整体按正文处理。
+    """
+    lines = [ln.strip() for ln in text.splitlines()]
+    lines = [ln for ln in lines if ln]
+    if not lines:
+        return "", []
+    title = lines[0]
+    paras = lines[1:] if len(lines) > 1 else []
+    if len(title) > 30:
+        paras = [title] + paras
+        title = ""
+    return title, paras
+
+
+def essay_chars(paragraphs):
+    """范文正文汉字数（不含标题、不含空白）"""
+    return len(re.sub(r"\s", "", "".join(paragraphs)))
+
+
+def build_essay_html(title, paragraphs, vocab, char_pinyin, expressions):
+    """带 HSK 等级着色 + 拼音 + 好词好句高亮的范文正文 HTML。
+
+    标题居中加粗（essay-title），正文每段首行空两格（essay-para），
+    使用楷体书写字体，支持普通/横线纸/方格纸三种展示模式。
+    """
     trie = Trie()
     for w, lv in vocab.items():
         if len(w) >= 1:
@@ -148,23 +181,51 @@ def build_essay_html(text, vocab, char_pinyin, expressions):
     for e in expressions or []:
         expr_words.add(e.get("expression", ""))
 
-    body_parts = []
-    for token, level, py in segment(text, trie, char_pinyin):
-        w = token
-        if level is not None and level > 0:
-            color = HSK_COLORS.get(level, "#7f8c8d")
-            bg = HSK_BG.get(level, "#f4f4f4")
-            tip = "%s（%s级）" % (py or w, HSK_LABELS.get(level, "超纲"))
-            if w in expr_words:
-                body_parts.append('<span class="word expr hsk%d" style="background:%s;color:%s" title="%s">%s</span>' % (level, "#fff3cd", color, tip, w))
+    def render_para(para):
+        parts = []
+        for token, level, py in segment(para, trie, char_pinyin):
+            w = token
+            if level is not None and level > 0:
+                color = HSK_COLORS.get(level, "#7f8c8d")
+                bg = HSK_BG.get(level, "#f4f4f4")
+                tip = "%s（%s级）" % (py or w, HSK_LABELS.get(level, "超纲"))
+                if w in expr_words:
+                    parts.append('<span class="word expr hsk%d" style="background:%s;color:%s" title="%s">%s</span>' % (level, "#fff3cd", color, tip, w))
+                else:
+                    parts.append('<span class="word hsk%d" style="background:%s;color:%s" title="%s">%s</span>' % (level, bg, color, tip, w))
             else:
-                body_parts.append('<span class="word hsk%d" style="background:%s;color:%s" title="%s">%s</span>' % (level, bg, color, tip, w))
-        else:
-            if w in expr_words:
-                body_parts.append('<span class="expr" style="background:#fff3cd">%s</span>' % w)
-            else:
-                body_parts.append(w)
-    return "".join(body_parts)
+                if w in expr_words:
+                    parts.append('<span class="expr" style="background:#fff3cd">%s</span>' % w)
+                else:
+                    parts.append(w)
+        return "".join(parts)
+
+    title_html = '<div class="essay-title">%s</div>' % esc(title) if title else ""
+    para_html = "".join('<p class="essay-para">%s</p>' % render_para(p) for p in paragraphs)
+    return title_html, para_html
+
+
+def _expr_regex(exp):
+    """把表达式转成正则：省略号（……/...）转为非贪婪通配，支持"虽然……但是……"这类不连续表达"""
+    return re.escape(exp).replace("……", ".*?").replace("...", ".*?")
+
+
+def _find_example(exp, text):
+    """从范文原文中提取包含该表达的原句（按句号/问号/叹号/分号切分，清理首尾引号）"""
+    pat = _expr_regex(exp)
+    for sent in re.split(r"[。！？；!?;]+", text):
+        if re.search(pat, sent):
+            return sent.strip(" \t\"“”‘’\r\n")
+    return ""
+
+
+def _highlight_expr(sent, exp):
+    """在原文例句中高亮该表达（加粗），帮助留学生定位重点词句"""
+    pat = _expr_regex(exp)
+    m = re.search(pat, sent)
+    if not m:
+        return sent
+    return sent[:m.start()] + "<b>" + sent[m.start():m.end()] + "</b>" + sent[m.end():]
 
 
 def build_expr_table(expressions, text):
@@ -173,16 +234,17 @@ def build_expr_table(expressions, text):
         exp = e.get("expression", "")
         example = e.get("example", "").strip()
         if not example and exp:
-            for sent in re.split(r"[。！？；!?;]+", text):
-                if exp in sent:
-                    example = sent.strip()
-                    break
+            example = _find_example(exp, text)
+        if example:
+            ex_html = _highlight_expr(esc(example), exp)
+        else:
+            ex_html = '<span class="warn">⚠️ 范文正文中未出现该表达，请检查配置</span>'
         rows.append(
             "<tr><td><strong>%s</strong></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
-            % (esc(exp), esc(e.get("pinyin", "")), HSK_LABELS.get(e.get("hsk"), ""), esc(e.get("en_def", "")), esc(example or e.get("explanation", "")))
+            % (esc(exp), esc(e.get("pinyin", "")), HSK_LABELS.get(e.get("hsk"), ""), esc(e.get("en_def", "")), ex_html)
         )
     return (
-        '<h3 class="sec-h">💡 好词好句</h3><table><tr><th>表达</th><th>拼音</th><th>等级</th><th>释义</th><th>例句/说明</th></tr>%s</table>'
+        '<h3 class="sec-h">💡 重点词句</h3><table><tr><th>表达</th><th>拼音</th><th>等级</th><th>释义</th><th>原文例句</th></tr>%s</table>'
         % "".join(rows)
     )
 
@@ -258,7 +320,7 @@ def build_student_section(tj, comic_html):
     return "".join(blocks)
 
 
-def build_teacher_section(tj, essay_html, expr_html, text, expressions):
+def build_teacher_section(tj, essay_title_html, paras_html, expr_html, paragraphs, expressions):
     blocks = []
     info = tj.get("teaching_info") or []
     if info:
@@ -266,7 +328,15 @@ def build_teacher_section(tj, essay_html, expr_html, text, expressions):
             '<tr><td class="k">%s</td><td class="v">%s</td></tr>' % (esc(k), esc(v)) for k, v in info
         )
         blocks.append(card("教学信息", '<table class="info">%s</table>' % trs, icon="🏫 "))
-    blocks.append(card("参考范文", '<div class="essay">%s</div>%s' % (essay_html, expr_html), icon="📝 "))
+    paper_switch = (
+        '<div class="paper-switch">'
+        '<span class="ps-label">书写纸：</span>'
+        '<button class="pbtn active" data-p="" onclick="setPaper(\'\')">普通</button>'
+        '<button class="pbtn" data-p="paper-line" onclick="setPaper(\'paper-line\')">横线纸</button>'
+        '<button class="pbtn" data-p="paper-grid" onclick="setPaper(\'paper-grid\')">方格纸</button>'
+        '</div>'
+    )
+    blocks.append(card("参考范文", paper_switch + essay_title_html + '<div class="essay" id="essay-block">%s</div>%s' % (paras_html, expr_html), icon="📝 "))
     glossary = tj.get("glossary") or []
     if glossary:
         g_rows = "".join(
@@ -285,8 +355,8 @@ def build_teacher_section(tj, essay_html, expr_html, text, expressions):
         blocks.append(card("评分要点", ul(tj.get("rubric")), icon="✅ "))
     if tj.get("teaching_tips"):
         blocks.append(card("教学建议", ul(tj.get("teaching_tips")), cls="green", icon="👩‍🏫 "))
-    # 级控检查（自动实算字数）
-    real_wc = len(re.sub(r"\s", "", text))
+    # 级控检查（自动实算字数，只统计正文段落，不含标题）
+    real_wc = essay_chars(paragraphs)
     min_chars = tj.get("min_chars") or 0
     ok = real_wc >= min_chars if min_chars else True
     lines = ["<li>字数：正文%d字%s</li>" % (real_wc, "（≥%d字，达标）" % min_chars if min_chars else "")]
@@ -329,7 +399,19 @@ PAGE_CSS = """
   .conn{font-size:14px;color:#33415c;margin-top:8px}
   .para-text{font-size:14px;color:#33415c;line-height:1.8}
   .note{font-size:13px;color:#8a93a6;margin-bottom:8px}
-  .essay{background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:20px 24px;font-size:17px;line-height:2.1}
+  .essay{background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:22px 26px;font-family:"KaiTi","楷体","STKaiti","KaiTi_GB2312",serif;font-size:17px;line-height:2.0;color:#2b3a52}
+  .essay-title{text-align:center;font-weight:700;font-size:20px;letter-spacing:2px;margin-bottom:12px;font-family:"KaiTi","楷体","STKaiti","KaiTi_GB2312",serif}
+  .essay-para{text-indent:2em;margin:0 0 4px;text-align:justify}
+  .paper-switch{margin-bottom:10px;font-size:13px;color:#5a6b85}
+  .ps-label{margin-right:6px}
+  .pbtn{display:inline-block;background:#fff;color:#1f4fd8;border:1px solid #d6e1ff;border-radius:14px;padding:2px 12px;margin:0 6px 0 0;font-size:13px;cursor:pointer}
+  .pbtn.active{background:#1f4fd8;color:#fff;border-color:#1f4fd8}
+  /* 横线纸：linify() 按实际渲染行拆分为 .hline（border-bottom 贯穿整行），线跟随每行字、行距即线距，完全自适应 */
+  .paper-line{line-height:30px}
+  .paper-line .hline{display:block;border-bottom:1px solid #b9c6d8;line-height:30px;white-space:nowrap}
+  /* 方格纸：字帖米字格——每个格子含十字+两条对角线虚线（8部分），SVG data URI 纯前端实现 */
+  .cell{display:inline-block;width:26px;height:26px;margin:0 -1px 2px 0;border:1px solid #a9bcd4;text-align:center;text-indent:0;line-height:26px;font-size:20px;vertical-align:top;background-color:#fff;background-image:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='26'%20height='26'%3E%3Cline%20x1='13'%20y1='0'%20x2='13'%20y2='26'%20stroke='%23d9e2f0'%20stroke-width='1'%20stroke-dasharray='2%202'/%3E%3Cline%20x1='0'%20y1='13'%20x2='26'%20y2='13'%20stroke='%23d9e2f0'%20stroke-width='1'%20stroke-dasharray='2%202'/%3E%3Cline%20x1='0'%20y1='0'%20x2='26'%20y2='26'%20stroke='%23d9e2f0'%20stroke-width='1'%20stroke-dasharray='2%202'/%3E%3Cline%20x1='26'%20y1='0'%20x2='0'%20y2='26'%20stroke='%23d9e2f0'%20stroke-width='1'%20stroke-dasharray='2%202'/%3E%3C/svg%3E");background-size:100% 100%;background-repeat:no-repeat;border-radius:0;overflow:hidden}
+  .cell.blank{background:#f4f8fd;border-style:dashed}
   .comic{background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:14px;text-align:center}
   .comic img{max-width:100%;border-radius:6px;border:1px solid #eee}
   .comic svg{max-width:100%;height:auto}
@@ -339,6 +421,8 @@ PAGE_CSS = """
   .comic-grid figcaption{font-size:13px;color:#7f8c8d;margin-top:4px}
   .word{border-radius:3px;padding:0 1px;cursor:help}
   .expr{outline:2px solid #f1c40f}
+  .warn{color:#c0392b;font-size:12px}
+  td b{color:#1f4fd8;font-weight:700}
   .legend{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:12px 0 8px;font-size:12px}
   .lg{display:inline-block;padding:2px 10px;border-radius:10px;border:1px solid rgba(0,0,0,.06)}
   table{width:100%;border-collapse:collapse;margin:10px 0 16px;background:#fff;font-size:13px}
@@ -361,10 +445,11 @@ PAGE_CSS = """
 
 
 def render(text, title, hsk_level, expressions, vocab, char_pinyin, comic_svg=None, comic_images=None, teacher_json=None, comic_image=None):
-    essay_html = build_essay_html(text, vocab, char_pinyin, expressions)
+    essay_title, paragraphs = split_essay(text)
+    essay_title_html, paras_html = build_essay_html(essay_title, paragraphs, vocab, char_pinyin, expressions)
     expr_html = build_expr_table(expressions, text) if expressions else ""
     comic_html = build_comic_html(comic_svg, comic_images, comic_image)
-    real_wc = len(re.sub(r"\s", "", text))
+    real_wc = essay_chars(paragraphs)
 
     legend = "".join(
         '<span class="lg" style="background:%s;color:%s">%s</span>' % (HSK_BG[l], HSK_COLORS[l], HSK_LABELS[l])
@@ -391,7 +476,7 @@ def render(text, title, hsk_level, expressions, vocab, char_pinyin, comic_svg=No
         )
 
         student_html = build_student_section(tj, comic_html)
-        teacher_html = build_teacher_section(tj, essay_html, expr_html, text, expressions)
+        teacher_html = build_teacher_section(tj, essay_title_html, paras_html, expr_html, paragraphs, expressions)
 
         body = '<div class="sec"><div class="sec-title">学生练习版</div>%s</div>' % student_html
         if teacher_html:
@@ -403,7 +488,7 @@ def render(text, title, hsk_level, expressions, vocab, char_pinyin, comic_svg=No
         meta_html = '<div class="hero"><h1>%s</h1><div class="sub">等级：%s｜字数：%s</div>%s</div>' % (
             esc(title), HSK_LABELS.get(hsk_level, hsk_level), real_wc, badges
         )
-        body = legend_html + '<div class="card white"><div class="card-title">📝 参考范文</div><div class="essay">%s</div>%s</div>' % (essay_html, expr_html)
+        body = legend_html + '<div class="card white"><div class="card-title">📝 参考范文</div>%s<div class="essay">%s</div>%s</div>' % (essay_title_html, paras_html, expr_html)
         if comic_html:
             body = '<div class="card white"><div class="card-title">🖼️ 四格漫画</div>%s</div>' % comic_html + body
         return _page(meta_html, body, title)
@@ -438,6 +523,135 @@ function downloadHtml(){
   a.download=(document.title.replace(/[\\\\/:*?"<>|\\s]+/g,'_')||'essay')+'.html';
   document.body.appendChild(a);a.click();document.body.removeChild(a);
 }
+function setPaper(cls){
+  var el=document.getElementById('essay-block');
+  if(!el)return;
+  if(essayOrigHTML===null){essayOrigHTML=el.innerHTML;}
+  if(cls==='paper-grid'){
+    var t=document.createElement('div');
+    t.innerHTML=essayOrigHTML;
+    gridify(t);
+    el.innerHTML=t.innerHTML;
+    el.className='essay';
+  }else if(cls==='paper-line'){
+    el.innerHTML=essayOrigHTML;
+    el.className='essay paper-line';
+    linify(el);
+  }else{
+    el.innerHTML=essayOrigHTML;
+    el.className='essay'+(cls?' '+cls:'');
+  }
+  var btns=document.querySelectorAll('.pbtn');
+  for(var i=0;i<btns.length;i++){
+    if(btns[i].getAttribute('data-p')===cls){btns[i].classList.add('active');}
+    else{btns[i].classList.remove('active');}
+  }
+}
+function gridify(root){
+  var paras=root.querySelectorAll('.essay-para');
+  for(var pi=0;pi<paras.length;pi++){
+    var p=paras[pi];
+    p.style.textAlign='left'; /* justify 与 inline-block 混用在部分内核导致字溢出格子，方格模式强制左对齐 */
+    var b1=document.createElement('span');b1.className='cell blank';b1.innerHTML='&nbsp;';
+    var b2=b1.cloneNode(true);
+    p.insertBefore(b2,p.firstChild);
+    p.insertBefore(b1,p.firstChild);
+    var targets=[];
+    (function rec(n){
+      for(var i=0;i<n.childNodes.length;i++){
+        var c=n.childNodes[i];
+        if(c.nodeType===3){targets.push(c);}
+        else if(c.nodeType===1&&c.tagName==='SPAN'){targets.push(c);}
+        else{rec(c);}
+      }
+    })(p);
+    for(var ti=0;ti<targets.length;ti++){
+      var t=targets[ti],frag=document.createDocumentFragment();
+      if(t.nodeType===3){
+        splitIntoCells(t.nodeValue,null,frag);
+      }else{
+        var title=t.getAttribute('title')||'';
+        var color='',st=t.getAttribute('style')||'',m=st.match(/color:([^;]+)/);
+        if(m){color=m[1];}
+        splitIntoCells(t.textContent,{title:title,color:color},frag);
+      }
+      t.parentNode.replaceChild(frag,t);
+    }
+  }
+}
+function splitIntoCells(txt,meta,frag){
+  var i=0;
+  while(i<txt.length){
+    var ch=txt[i];
+    if(ch===' '||ch==='\t'||ch==='\\n'||ch==='\\r'){i++;continue;}
+    var cell=document.createElement('span');
+    cell.className='cell';
+    if(meta){
+      if(meta.title){cell.setAttribute('title',meta.title);}
+      if(meta.color){cell.style.color=meta.color;}
+    }
+    var end=i;
+    if(/[A-Za-z0-9]/.test(ch)){
+      while(end<txt.length&&/[A-Za-z0-9]/.test(txt[end])){end++;}
+    }else{end=i+1;}
+    cell.textContent=txt.substring(i,end);
+    frag.appendChild(cell);
+    i=end;
+  }
+}
+function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function linify(root){
+  /* 横线纸：把段落文本按实际渲染行拆成 <div class="hline">，border-bottom 贯穿整行，
+     线跟随每行字（行距即线距），不依赖固定坐标背景 */
+  var paras=root.querySelectorAll('.essay-para');
+  for(var pi=0;pi<paras.length;pi++){
+    var p=paras[pi];
+    p.style.textAlign='left';
+    var chars=[];
+    var walker=document.createTreeWalker(p,NodeFilter.SHOW_TEXT,{acceptNode:function(n){return n.nodeValue&&n.nodeValue.length?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT;}});
+    var nodes=[];var w;
+    while(w=walker.nextNode()){nodes.push(w);}
+    for(var ni=0;ni<nodes.length;ni++){
+      var node=nodes[ni];
+      var sp=node.parentNode,title='',color='';
+      while(sp&&sp.nodeType===1&&sp.tagName!=='SPAN'){sp=sp.parentNode;}
+      if(sp&&sp.nodeType===1){
+        title=sp.getAttribute('title')||'';
+        var st=sp.getAttribute('style')||'',m=st.match(/color:([^;]+)/);
+        if(m){color=m[1];}
+      }
+      var v=node.nodeValue;
+      for(var ci=0;ci<v.length;ci++){
+        var ch=v[ci];
+        if(ch===' '||ch==='\t'||ch==='\\n'||ch==='\\r'){continue;}
+        var r=document.createRange();r.setStart(node,ci);r.setEnd(node,ci+1);
+        var rc=r.getBoundingClientRect();
+        if(rc.width===0&&rc.height===0){continue;}
+        chars.push({ch:ch,title:title,color:color,top:Math.round(rc.top)});
+      }
+    }
+    if(!chars.length){continue;}
+    var lines=[[chars[0]]];
+    for(var i2=1;i2<chars.length;i2++){
+      var lastTop=lines[lines.length-1][0].top;
+      if(chars[i2].top>lastTop+2){lines.push([]);}
+      lines[lines.length-1].push(chars[i2]);
+    }
+    p.style.textIndent='0';
+    var html='';
+    for(var li=0;li<lines.length;li++){
+      var line=lines[li],sb='';
+      for(var cj=0;cj<line.length;cj++){
+        var c=line[cj],st2='';
+        if(c.color){st2+=';color:'+c.color;}
+        sb+='<span class="ch"'+(c.title?' title="'+escHtml(c.title)+'"':'')+' style="'+st2.slice(1)+'">'+escHtml(c.ch)+'</span>';
+      }
+      html+='<div class="hline"'+(li===0?' style="text-indent:2em"':'')+'>'+sb+'</div>';
+    }
+    p.innerHTML=html;
+  }
+}
+var essayOrigHTML=null;
 </script>
 </body>
 </html>""" % (esc(title), PAGE_CSS, meta_html, body)
