@@ -145,11 +145,11 @@ Target users: English-speaking Chinese learners (international students).
 **⚠️ 不要自己写 HTML——把范文文本交给脚本，由脚本生成文件。**
 
 1. 把**修正后的范文**保存到 `/mnt/user-data/workspace/essay_text.txt`，格式为：**第一行 = 标题**（贴合话题，不加书名号）；**其后每一行 = 一个自然段**（开头-主体-结尾，分 3-4 段，不要整篇挤成一段；不加"图1/图2"等标注；图序信息写在 teacher.json 的 `structure` 字段里）。渲染时标题自动居中、正文每段首行自动空两格，模拟日常作文书写格式。
-2. 把好词好句（5-8 个）保存到 `/mnt/user-data/workspace/expr.json`，JSON 数组格式：
+2. 把重点词句（5-8 个，**必须是范文正文中实际出现的表达**）保存到 `/mnt/user-data/workspace/expr.json`，JSON 数组格式：
    ```json
-   [{"expression":"举足轻重","pinyin":"jǔ zú qīng zhòng","hsk":6,"en_def":"play a decisive role","explanation":"This idiom means...","example":"范文中的原句"}]
+   [{"expression":"真是","pinyin":"zhēn shì","hsk":7,"en_def":"really; indeed","explanation":"","example":"你真是个懂礼貌的好孩子。"}]
    ```
-   **注意：`example` 字段填范文中包含该表达的原句；留空则脚本自动从范文提取。**
+   **注意：`example` 填范文中包含该表达的原句（含省略号的表达如"虽然……但是……"也能自动匹配）；留空则脚本自动从范文提取。重点词句必须**实际出现在范文正文**，若范文没有该表达，学习页会给出提示，请勿收录范文外的词句。**
 3. 把教师元数据保存到 `/mnt/user-data/workspace/teacher.json`（把输出模板"学生视图+教师视图"里的结构化信息填进去）：
    ```json
    {
@@ -171,7 +171,7 @@ Target users: English-speaking Chinese learners (international students).
    ```
    **注意：缺字段没问题（脚本会跳过空卡片），但题目、题型、字数、结构、评分要点这些核心字段务必填。**
    **⚠️ 生词表一致性（必守）：`glossary` 只收范文中**实际出现**、且正文中已用 ★ 标注的词**，逐一对齐；严禁收录范文中没有的词（如示例中的"真是"必须出现在范文正文里）。
-4. 运行脚本（脚本自动按 2026 词表分段、标注每个词的 HSK 等级与拼音、高亮好词好句，生成**学生练习版+教师备课版双视图、带打印/下载按钮**的自包含 HTML；**看图作文时嵌入四格漫画**）：
+4. 运行脚本（脚本自动按 2026 词表分段、标注每个词的 HSK 等级与拼音、高亮重点词句，生成**学生练习版+教师备课版双视图、带打印/下载按钮**的自包含 HTML；**看图作文时嵌入四格漫画**）：
    ```bash
    python3 /mnt/skills/user/hsk-writing-generator-tcsl/v2.0.7/scripts/render_essay_html.py \
      --essay-file /mnt/user-data/workspace/essay_text.txt \

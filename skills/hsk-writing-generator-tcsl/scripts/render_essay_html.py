@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """范文 HTML 学习页渲染器（2026 新大纲口径）。
 
-读取范文正文 + 好词好句 + 教师元数据（teacher.json），按 reference/hsk_vocab.json
+读取范文正文 + 重点词句 + 教师元数据（teacher.json），按 reference/hsk_vocab.json
 （2026 版 HSK 分级词表）做最长匹配分词，给每个词标注 HSK 等级与拼音，
 生成一份完整、自包含、可直接打印/下载的教学素材 HTML：
 
@@ -20,7 +20,7 @@
 参数:
   --essay-text     范文正文（与 --essay-file 二选一）
   --essay-file     范文文本文件路径
-  --expressions-json  好词好句 JSON 数组（可选）：[{"expression","pinyin","hsk","en_def","explanation","example"}]
+  --expressions-json  重点词句 JSON 数组（可选）：[{"expression","pinyin","hsk","en_def","explanation","example"}]
   --teacher-json   教师元数据 JSON（可选，提供则渲染完整双视图教学素材）：
       {"exam_name","exam_type","topic","level_label","min_chars","time_limit",
        "question","guiding_questions":[],"patterns":[],"connectors":[],
@@ -205,22 +205,46 @@ def build_essay_html(title, paragraphs, vocab, char_pinyin, expressions):
     return title_html, para_html
 
 
+def _expr_regex(exp):
+    """把表达式转成正则：省略号（……/...）转为非贪婪通配，支持"虽然……但是……"这类不连续表达"""
+    return re.escape(exp).replace("……", ".*?").replace("...", ".*?")
+
+
+def _find_example(exp, text):
+    """从范文原文中提取包含该表达的原句（按句号/问号/叹号/分号切分，清理首尾引号）"""
+    pat = _expr_regex(exp)
+    for sent in re.split(r"[。！？；!?;]+", text):
+        if re.search(pat, sent):
+            return sent.strip(" \t\"“”‘’\r\n")
+    return ""
+
+
+def _highlight_expr(sent, exp):
+    """在原文例句中高亮该表达（加粗），帮助留学生定位重点词句"""
+    pat = _expr_regex(exp)
+    m = re.search(pat, sent)
+    if not m:
+        return sent
+    return sent[:m.start()] + "<b>" + sent[m.start():m.end()] + "</b>" + sent[m.end():]
+
+
 def build_expr_table(expressions, text):
     rows = []
     for e in expressions or []:
         exp = e.get("expression", "")
         example = e.get("example", "").strip()
         if not example and exp:
-            for sent in re.split(r"[。！？；!?;]+", text):
-                if exp in sent:
-                    example = sent.strip()
-                    break
+            example = _find_example(exp, text)
+        if example:
+            ex_html = _highlight_expr(esc(example), exp)
+        else:
+            ex_html = '<span class="warn">⚠️ 范文正文中未出现该表达，请检查配置</span>'
         rows.append(
             "<tr><td><strong>%s</strong></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
-            % (esc(exp), esc(e.get("pinyin", "")), HSK_LABELS.get(e.get("hsk"), ""), esc(e.get("en_def", "")), esc(example or e.get("explanation", "")))
+            % (esc(exp), esc(e.get("pinyin", "")), HSK_LABELS.get(e.get("hsk"), ""), esc(e.get("en_def", "")), ex_html)
         )
     return (
-        '<h3 class="sec-h">💡 好词好句</h3><table><tr><th>表达</th><th>拼音</th><th>等级</th><th>释义</th><th>例句/说明</th></tr>%s</table>'
+        '<h3 class="sec-h">💡 重点词句</h3><table><tr><th>表达</th><th>拼音</th><th>等级</th><th>释义</th><th>原文例句</th></tr>%s</table>'
         % "".join(rows)
     )
 
@@ -397,6 +421,8 @@ PAGE_CSS = """
   .comic-grid figcaption{font-size:13px;color:#7f8c8d;margin-top:4px}
   .word{border-radius:3px;padding:0 1px;cursor:help}
   .expr{outline:2px solid #f1c40f}
+  .warn{color:#c0392b;font-size:12px}
+  td b{color:#1f4fd8;font-weight:700}
   .legend{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:12px 0 8px;font-size:12px}
   .lg{display:inline-block;padding:2px 10px;border-radius:10px;border:1px solid rgba(0,0,0,.06)}
   table{width:100%;border-collapse:collapse;margin:10px 0 16px;background:#fff;font-size:13px}
