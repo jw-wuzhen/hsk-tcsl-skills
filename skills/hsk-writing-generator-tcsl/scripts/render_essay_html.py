@@ -166,11 +166,16 @@ def essay_chars(paragraphs):
     return len(re.sub(r"\s", "", "".join(paragraphs)))
 
 
-def build_essay_html(title, paragraphs, vocab, char_pinyin, expressions):
-    """带 HSK 等级着色 + 拼音 + 重点词句高亮的范文正文 HTML。
+def build_essay_html(title, paragraphs, vocab, char_pinyin, expressions, glossary=None):
+    """带 HSK 等级着色 + 拼音 + 重点词句高亮 + 生词标注的范文正文 HTML。
 
     标题居中加粗（essay-title），正文每段首行空两格（essay-para），
     使用楷体书写字体，支持普通/横线纸/方格纸三种展示模式。
+    标注规则：
+      - 词表命中且等级>0 → 按 HSK 等级着色（悬停显示拼音+等级）
+      - 词表查不到、但出现在【生词表】(glossary) 里的词 → 统一生词样式
+        （橙底虚线描边，悬停显示拼音/词性/释义/原文例句），与生词表对齐
+      - 其余字原样输出
     """
     trie = Trie()
     for w, lv in vocab.items():
@@ -180,6 +185,19 @@ def build_essay_html(title, paragraphs, vocab, char_pinyin, expressions):
     expr_words = set()
     for e in expressions or []:
         expr_words.add(e.get("expression", ""))
+
+    gloss = {}
+    for g in glossary or []:
+        w = g.get("word", "")
+        if w:
+            gloss[w] = g
+    full_text = "".join(paragraphs)
+
+    # 词表查不到的多字生词插入 Trie（level=0 标记），让分词能整词命中，
+    # 避免被拆成单字后无法与生词表对齐
+    for gw in gloss:
+        if len(gw) > 1 and gw not in vocab:
+            trie.insert(gw, 0)
 
     def render_para(para):
         parts = []
@@ -193,6 +211,10 @@ def build_essay_html(title, paragraphs, vocab, char_pinyin, expressions):
                     parts.append('<span class="word expr hsk%d" style="background:%s;color:%s" title="%s">%s</span>' % (level, "#fff3cd", color, tip, w))
                 else:
                     parts.append('<span class="word hsk%d" style="background:%s;color:%s" title="%s">%s</span>' % (level, bg, color, tip, w))
+            elif w in gloss:
+                g = gloss[w]
+                tip = "%s %s（%s）%s" % (w, g.get("pinyin", ""), g.get("pos", "") or "", g.get("meaning", ""))
+                parts.append('<span class="nw" title="%s">%s</span>' % (esc(tip), esc(w)))
             else:
                 if w in expr_words:
                     parts.append('<span class="expr" style="background:#fff3cd">%s</span>' % w)
@@ -229,23 +251,29 @@ def _highlight_expr(sent, exp):
 
 
 def build_expr_table(expressions, text):
+    """重点词句表：只展示范文正文实际出现的表达；未出现的整行跳过（不渲染警告行），
+    底部给一行浅色聚合提示，便于调用方自查配置。"""
     rows = []
+    skipped = 0
     for e in expressions or []:
         exp = e.get("expression", "")
         example = e.get("example", "").strip()
         if not example and exp:
             example = _find_example(exp, text)
-        if example:
-            ex_html = _highlight_expr(esc(example), exp)
-        else:
-            ex_html = '<span class="warn">⚠️ 范文正文中未出现该表达，请检查配置</span>'
+        if not example:
+            skipped += 1
+            continue
+        ex_html = _highlight_expr(esc(example), exp)
         rows.append(
             "<tr><td><strong>%s</strong></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
             % (esc(exp), esc(e.get("pinyin", "")), HSK_LABELS.get(e.get("hsk"), ""), esc(e.get("en_def", "")), ex_html)
         )
+    hint = ""
+    if skipped:
+        hint = '<div class="expr-skip">%d 个表达未在范文正文中出现，已自动隐藏（请检查配置，重点词句须取自范文实际内容）</div>' % skipped
     return (
-        '<h3 class="sec-h">💡 重点词句</h3><table><tr><th>表达</th><th>拼音</th><th>等级</th><th>释义</th><th>原文例句</th></tr>%s</table>'
-        % "".join(rows)
+        '<h3 class="sec-h">💡 重点词句</h3><table><tr><th>表达</th><th>拼音</th><th>等级</th><th>释义</th><th>原文例句</th></tr>%s</table>%s'
+        % ("".join(rows), hint)
     )
 
 
@@ -340,26 +368,25 @@ def build_teacher_section(tj, essay_title_html, paras_html, expr_html, paragraph
     glossary = tj.get("glossary") or []
     if glossary:
         body_text = "".join(paragraphs)
-        g_rows = ""
+        g_badges = ""
         for g in glossary:
             w = g.get("word", "")
             ex = (g.get("example") or "").strip()
             if not ex and w:
                 ex = _find_example(w, body_text)
-            if ex:
-                ex_html = _highlight_expr(esc(ex), w)
-            else:
-                ex_html = '<span class="warn">⚠️ 范文中未出现该生词，请检查配置</span>'
-            g_rows += (
-                '<tr><td class="star">★%s★</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
-                % (esc(w), esc(g.get("pinyin", "")), esc(g.get("pos", "") or ""), esc(g.get("meaning", "")), ex_html)
+            g_badges += (
+                '<span class="gword">★%s <i>%s</i> <b>%s</b> %s%s</span>'
+                % (esc(w), esc(g.get("pinyin", "")), esc(g.get("pos", "") or ""),
+                   esc(g.get("meaning", "")), (' <em>例：%s</em>' % esc(ex)) if ex else "")
             )
-        note = tj.get("out_of_syllabus_note") or "生词为本等级及以上词汇（含词表查不到的词），请先解释再使用"
+        note = tj.get("out_of_syllabus_note") or "生词 %d 个（%s 及以上词汇及大纲外词）" % (
+            len(glossary), tj.get("level_label") or "本等级"
+        )
         blocks.append(
             '<div class="card white"><div class="card-title">📖 生词表</div>'
             '<div class="note">%s</div>'
-            '<table><tr><th>生词</th><th>拼音</th><th>词性</th><th>释义</th><th>原文例句</th></tr>%s</table></div>'
-            % (esc(note), g_rows)
+            '<div class="glossary">%s</div></div>'
+            % (esc(note), g_badges)
         )
     if tj.get("structure"):
         blocks.append(card("范文结构", '<div class="para-text">%s</div>' % esc(tj.get("structure")), icon="🧩 "))
@@ -433,7 +460,16 @@ PAGE_CSS = """
   .comic-grid figcaption{font-size:13px;color:#7f8c8d;margin-top:4px}
   .word{border-radius:3px;padding:0 1px;cursor:help}
   .expr{outline:2px solid #f1c40f}
+  /* 生词（词表查不到但收录于【生词表】）：橙底虚线，与生词表同色系对齐 */
+  .nw{background:#fef5ec;color:#a35a00;border-bottom:1.5px dashed #e67e22;border-radius:3px;padding:0 2px;cursor:help}
   .warn{color:#c0392b;font-size:12px}
+  .expr-skip{font-size:12px;color:#8a93a6;margin:-6px 0 14px}
+  /* 生词表：内联流式排列，单星号 ★ 前缀 */
+  .glossary{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 2px}
+  .gword{display:inline-block;background:#fef5ec;border:1px solid #f5d9b8;color:#7a4a00;border-radius:16px;padding:4px 12px;font-size:13px;line-height:1.6}
+  .gword i{font-style:normal;color:#a35a00;margin-right:3px}
+  .gword b{font-weight:700;color:#7a4a00;margin-right:3px}
+  .gword em{font-style:normal;color:#8a93a6}
   td b{color:#1f4fd8;font-weight:700}
   .legend{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:12px 0 8px;font-size:12px}
   .lg{display:inline-block;padding:2px 10px;border-radius:10px;border:1px solid rgba(0,0,0,.06)}
@@ -457,8 +493,9 @@ PAGE_CSS = """
 
 
 def render(text, title, hsk_level, expressions, vocab, char_pinyin, comic_svg=None, comic_images=None, teacher_json=None, comic_image=None):
+    glossary = (teacher_json or {}).get("glossary") if teacher_json else None
     essay_title, paragraphs = split_essay(text)
-    essay_title_html, paras_html = build_essay_html(essay_title, paragraphs, vocab, char_pinyin, expressions)
+    essay_title_html, paras_html = build_essay_html(essay_title, paragraphs, vocab, char_pinyin, expressions, glossary)
     expr_html = build_expr_table(expressions, text) if expressions else ""
     comic_html = build_comic_html(comic_svg, comic_images, comic_image)
     real_wc = essay_chars(paragraphs)
@@ -467,6 +504,8 @@ def render(text, title, hsk_level, expressions, vocab, char_pinyin, comic_svg=No
         '<span class="lg" style="background:%s;color:%s">%s</span>' % (HSK_BG[l], HSK_COLORS[l], HSK_LABELS[l])
         for l in range(1, 7)
     )
+    if glossary:
+        legend += '<span class="lg" style="background:#fef5ec;color:#a35a00">生词（大纲外）</span>'
     legend_html = '<div class="legend">按 HSK 等级着色（悬停查看拼音）：%s</div>' % legend
 
     badges = '<div class="badges"><span class="badge">%s</span></div>' % esc(HSK_LABELS.get(hsk_level, "HSK %s" % hsk_level))
