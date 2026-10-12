@@ -507,6 +507,38 @@ def esc(text):
     return html_module.escape(str(text), quote=False)
 
 
+# POS abbreviation codes used in HSK CSVs -> full English names
+POS_FULL = {
+    "n": "noun", "v": "verb", "a": "adjective", "ad": "adverb", "d": "adverb",
+    "r": "pronoun", "m": "measure word", "q": "measure word", "p": "preposition",
+    "c": "conjunction", "u": "particle", "e": "interjection", "t": "time word",
+    "s": "locality word", "b": "distinguishing word", "z": "state word",
+    "h": "prefix", "k": "suffix", "j": "abbreviation", "i": "idiom",
+    "l": "set phrase", "g": "morpheme", "o": "onomatopoeia", "f": "locality word",
+}
+# Combination codes used in HSK CSVs -> base codes
+COMBO_POS = {
+    "vn": ["v", "n"], "an": ["a", "n"], "vd": ["v", "d"],
+    "nv": ["n", "v"], "av": ["a", "v"], "dv": ["d", "v"],
+}
+
+
+def expand_pos(pos):
+    """Expand POS codes like 'v;vn;b' to full English names, no duplicates."""
+    if not pos:
+        return ""
+    parts = []
+    for p in pos.split(";"):
+        p = p.strip()
+        if not p:
+            continue
+        for code in COMBO_POS.get(p, [p]):
+            full = POS_FULL.get(code, code)
+            if full not in parts:
+                parts.append(full)
+    return " / ".join(parts)
+
+
 def render_word(word_text, vocab, highlight_words):
     """Render a single word as HTML with annotations."""
     if not word_text.strip():
@@ -609,6 +641,106 @@ def extract_example_sentence(essay_text, expression):
     return ""
 
 
+def collect_new_words(essay_text, vocab, user_level):
+    """Collect new words: HSK level >= user's level.
+
+    Definition (unified): if the user is at HSK5, then HSK5 and HSK6 words
+    are ALL new words. Words BELOW the user's level are NEVER new words.
+    """
+    try:
+        user_level = int(user_level)
+    except (TypeError, ValueError):
+        user_level = 6
+    if user_level < 1:
+        user_level = 1
+    if user_level > 6:
+        user_level = 6
+
+    segments = segment_text(essay_text, vocab)
+    found = {}
+    order = []
+    for word, is_punct in segments:
+        if is_punct or not word.strip():
+            continue
+        info = vocab.get(word, {})
+        hsk = info.get("hsk", 0)
+        if hsk >= user_level and hsk > 0 and word not in found:
+            example = extract_example_sentence(essay_text, word)
+            found[word] = {
+                "word": word,
+                "pinyin": normalize_pinyin(info.get("pinyin", "")),
+                "hsk": hsk,
+                "pos": info.get("pos", ""),
+                "en_def": info.get("en_def", ""),
+                "example": example,
+            }
+            order.append(word)
+
+    words = sorted(found.values(), key=lambda x: (x["hsk"], order.index(x["word"])))
+    return words
+
+
+def generate_new_words_html(new_words, user_level):
+    """Render the New Words section HTML."""
+    try:
+        level_int = int(user_level)
+    except (TypeError, ValueError):
+        level_int = 6
+
+    if not new_words:
+        return '''<div class="nw-empty">No new words found — every word in this essay is below HSK %d. Great job!</div>''' % level_int
+
+    cards = []
+    for nw in new_words:
+        color = HSK_COLORS.get(nw["hsk"], "#555")
+        label = HSK_LABELS.get(nw["hsk"], "")
+        bg = HSK_LIGHT_BG.get(nw["hsk"], "#f9f9f9")
+        pos_full = expand_pos(nw.get("pos", ""))
+        example = esc(nw.get("example", ""))
+        en_def = esc(nw.get("en_def", ""))
+        pos_html = f'<div class="ecard-meta">{esc(pos_full)}</div>' if pos_full else ""
+
+        cards.append(f'''
+    <div class="ecard" style="--c:{color};--bg:{bg};">
+      <div class="ecard-head">
+        <span class="ecard-text">{esc(nw["word"])}</span>
+        <span class="ecard-py">{esc(nw["pinyin"])}</span>
+        <span class="ecard-hsk" style="background:{color};">{label}</span>
+      </div>
+      {pos_html}
+      <div class="ecard-en">{en_def}</div>
+      <div class="ecard-ex"><span class="ecard-ex-label">Example:</span> {example}</div>
+    </div>''')
+    return "\n".join(cards)
+
+
+def build_paper_view(essay_text, title):
+    """Build the composition-paper view: one character per grid cell, KaiTi font.
+
+    Restores the real writing scenario (方格作文纸). Each paragraph starts with
+    two blank cells (首行空两格). Punctuation also occupies one cell.
+    """
+    paras = []
+    for raw in essay_text.split("\n"):
+        raw = raw.strip()
+        if not raw:
+            continue
+        cells = []
+        for ch in raw:
+            if ch == " ":
+                continue
+            cells.append(f'<span class="gc">{esc(ch)}</span>')
+        if cells:
+            indent = '<span class="gc blank"></span><span class="gc blank"></span>'
+            paras.append(f'<p class="gpara">{indent}{"".join(cells)}</p>')
+    paras_html = "\n".join(paras)
+    return f'''
+  <div class="paper-head">{esc(title)}</div>
+  <div class="paper-body">
+{paras_html}
+  </div>'''
+
+
 def generate_html(essay_text, title, hsk_level, source_url, word_count, good_expressions, vocab):
     """Generate the complete HTML page."""
     # Build highlight set from good expressions
@@ -656,6 +788,13 @@ def generate_html(essay_text, title, hsk_level, source_url, word_count, good_exp
                 parts.append(render_word(word, vocab, highlight_words))
         essay_html_parts.append('<p class="para">' + "".join(parts) + '</p>')
     essay_html = "\n".join(essay_html_parts)
+
+    # Build composition-paper view (方格/横线作文纸, KaiTi font, 首行空两格)
+    paper_html = build_paper_view(essay_text, title)
+
+    # Collect new words (HSK level >= user's level) and render the section
+    new_words = collect_new_words(essay_text, vocab, hsk_level)
+    new_words_html = generate_new_words_html(new_words, hsk_level)
 
     # Render good expression cards
     expr_cards = []
@@ -738,7 +877,7 @@ def generate_html(essay_text, title, hsk_level, source_url, word_count, good_exp
     background: white; border-radius: 20px; padding: 48px 40px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.12); margin-bottom: 32px;
   }}
-  .para {{ margin-bottom: 22px; text-align: justify; line-height: 1.5; }}
+  .para {{ margin-bottom: 22px; text-align: justify; line-height: 1.5; text-indent: 2em; }}
   .w {{
     display: inline-flex; flex-direction: column; align-items: center;
     vertical-align: top; margin: 0 1px 8px; padding: 4px 5px 3px;
@@ -774,6 +913,43 @@ def generate_html(essay_text, title, hsk_level, source_url, word_count, good_exp
   .w.hl .cz {{ color: #e65100; }}
   .star {{ position: absolute; top: -8px; right: -4px; font-size: 13px; color: #ff9800; text-shadow: 0 1px 2px rgba(255,152,0,0.3); }}
   .punct {{ font-size: 20px; color: #555; font-weight: 600; vertical-align: top; display: inline-block; margin: 0 1px; padding-top: 18px; }}
+  .view-bar {{ display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-bottom: 24px; }}
+  .view-btn {{
+    border: 2px solid rgba(255,255,255,0.7); background: rgba(255,255,255,0.15);
+    color: white; font-size: 14px; font-weight: 600; padding: 9px 20px;
+    border-radius: 22px; cursor: pointer; transition: all 0.2s ease;
+  }}
+  .view-btn:hover {{ background: rgba(255,255,255,0.32); }}
+  .view-btn.active {{ background: white; color: #5b4b8a; border-color: white; box-shadow: 0 4px 14px rgba(0,0,0,0.18); }}
+  .paper {{ background: white; border-radius: 20px; padding: 34px 30px 40px; box-shadow: 0 8px 32px rgba(0,0,0,0.12); margin-bottom: 32px; }}
+  .paper-head {{
+    text-align: center; font-size: 28px; font-weight: 700; color: #1a1a2e;
+    font-family: "KaiTi", "楷体", "STKaiti", "Kaiti SC", "TW-Kai", serif;
+    margin-bottom: 24px; letter-spacing: 4px;
+  }}
+  .gc {{ font-family: "KaiTi", "楷体", "STKaiti", "Kaiti SC", "TW-Kai", serif; font-size: 26px; color: #1a1a2e; }}
+  .gpara {{ margin: 0; line-height: 34px; }}
+  .paper.grid .paper-body {{
+    border: 2px solid #d99a9f;
+    background-image:
+      linear-gradient(to right, #f2c6ca 1px, transparent 1px),
+      linear-gradient(to bottom, #f2c6ca 1px, transparent 1px);
+    background-size: 34px 34px;
+    padding: 0;
+  }}
+  .paper.grid .gc {{ display: inline-flex; width: 34px; height: 34px; align-items: center; justify-content: center; }}
+  .paper.grid .gc.blank {{ visibility: hidden; }}
+  .paper.lines .paper-body {{
+    border: 2px solid #b8c4d9;
+    background-image: linear-gradient(to bottom, #b8c4d9 1px, transparent 1px);
+    background-size: 100% 34px;
+    padding: 0;
+  }}
+  .paper.lines .gpara {{ text-indent: 2em; }}
+  .paper.lines .gc.blank {{ display: none; }}
+  .nw-note {{ font-size: 14px; color: #888; margin-bottom: 18px; }}
+  .nw-empty {{ font-size: 15px; color: #888; padding: 10px 0; }}
+  .ecard-meta {{ font-size: 13px; font-weight: 600; color: var(--c, #888); margin-bottom: 6px; text-transform: capitalize; }}
   .expr-sec {{ background: white; border-radius: 20px; padding: 40px; box-shadow: 0 8px 32px rgba(0,0,0,0.12); }}
   .expr-title {{ font-size: 24px; font-weight: 800; color: #1a1a2e; margin-bottom: 24px; padding-bottom: 14px; border-bottom: 3px solid #f0f2f5; }}
   .ecard {{ border-left: 5px solid var(--c, #ccc); background: var(--bg, #f9f9f9); border-radius: 10px; padding: 22px 26px; margin-bottom: 16px; transition: transform 0.2s, box-shadow 0.2s; }}
@@ -814,21 +990,48 @@ def generate_html(essay_text, title, hsk_level, source_url, word_count, good_exp
       <span class="badge badge-source"><a href="{source_esc}" target="_blank">📍 zuowen.com</a></span>
     </div>
   </div>
+  <div class="view-bar">
+    <button class="view-btn active" data-mode="reading" onclick="switchMode('reading')">📖 阅读模式</button>
+    <button class="view-btn" data-mode="grid" onclick="switchMode('grid')">⬛ 作文纸（方格）</button>
+    <button class="view-btn" data-mode="lines" onclick="switchMode('lines')">📏 作文纸（横线）</button>
+  </div>
+  <div id="reading-view">
   <div class="legend">
     {legend_items}
-    <span class="lg-item"><span class="lg-dot" style="background:#ffc107;"></span>★ Good Expression</span>
+    <span class="lg-item"><span class="lg-dot" style="background:#ffc107;"></span>★ Key Expression</span>
   </div>
   <div class="essay">
 {essay_html}
   </div>
+  </div>
+  <div id="paper-view" class="paper grid" style="display:none;">
+{paper_html}
+  </div>
   <div class="expr-sec">
-    <div class="expr-title">★ Useful Expressions &amp; Key Sentences</div>
+    <div class="expr-title">★ 重点词句 | Key Words &amp; Sentences</div>
 {expr_html}
+  </div>
+  <div class="expr-sec">
+    <div class="expr-title">📚 生词表 | New Words (HSK {level_label} &amp; above)</div>
+    <div class="nw-note">生词定义：你所选等级及以上的词汇。例句均取自本篇原文。 (New words are words at your HSK level and above. All examples are taken from this essay.)</div>
+{new_words_html}
   </div>
   <div class="footer">
     Generated by Chinese Writing Tutor · Source: <a href="{source_esc}" target="_blank">zuowen.com</a>
   </div>
 </div>
+<script>
+function switchMode(mode) {{
+  var btns = document.querySelectorAll('.view-btn');
+  for (var i = 0; i < btns.length; i++) {{
+    btns[i].classList.toggle('active', btns[i].getAttribute('data-mode') === mode);
+  }}
+  document.getElementById('reading-view').style.display = (mode === 'reading') ? '' : 'none';
+  var pv = document.getElementById('paper-view');
+  pv.style.display = (mode === 'reading') ? 'none' : '';
+  pv.className = (mode === 'grid') ? 'paper grid' : 'paper lines';
+}}
+</script>
 </body>
 </html>'''
 
