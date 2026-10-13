@@ -7,7 +7,7 @@
 生成一份完整、自包含、可直接打印/下载的教学素材 HTML：
 
   - 学生练习版：题目、四格漫画、构思引导、可用句型、参考关键词、写作要求
-  - 教师备课版：教学信息、参考范文（★超纲词+注释表）、范文结构、评分要点、
+  - 教师备课版：教学信息、参考范文（★生词+生词表）、范文结构、评分要点、
     教学建议、级控检查、考试说明
   - 顶部工具条：打印 / 存为 PDF、下载 HTML（@media print 打印友好，A4 可用）
 
@@ -26,7 +26,7 @@
        "question","guiding_questions":[],"patterns":[],"connectors":[],
        "keywords":[],"requirements":[],"teaching_info":[[k,v],...],
        "structure","rubric":[],"teaching_tips":[],"exam_note",
-       "glossary":[{"word","pinyin","meaning"}],"out_of_syllabus_note"}
+       "glossary":[{"word","pinyin","pos","meaning","example"}],"out_of_syllabus_note"}
   --output         输出 HTML 路径（默认 /mnt/user-data/outputs/essay_display.html）
   --hsk-level      HSK 等级（仅用于页头显示）
   --title          标题（无 teacher-json 时的页头标题）
@@ -166,11 +166,16 @@ def essay_chars(paragraphs):
     return len(re.sub(r"\s", "", "".join(paragraphs)))
 
 
-def build_essay_html(title, paragraphs, vocab, char_pinyin, expressions):
-    """带 HSK 等级着色 + 拼音 + 好词好句高亮的范文正文 HTML。
+def build_essay_html(title, paragraphs, vocab, char_pinyin, expressions, glossary=None):
+    """带 HSK 等级着色 + 拼音 + 重点词句高亮 + 生词标注的范文正文 HTML。
 
     标题居中加粗（essay-title），正文每段首行空两格（essay-para），
     使用楷体书写字体，支持普通/横线纸/方格纸三种展示模式。
+    标注规则：
+      - 词表命中且等级>0 → 按 HSK 等级着色（悬停显示拼音+等级）
+      - 词表查不到、但出现在【生词表】(glossary) 里的词 → 统一生词样式
+        （橙底虚线描边，悬停显示拼音/词性/释义/原文例句），与生词表对齐
+      - 其余字原样输出
     """
     trie = Trie()
     for w, lv in vocab.items():
@@ -180,6 +185,19 @@ def build_essay_html(title, paragraphs, vocab, char_pinyin, expressions):
     expr_words = set()
     for e in expressions or []:
         expr_words.add(e.get("expression", ""))
+
+    gloss = {}
+    for g in glossary or []:
+        w = g.get("word", "")
+        if w:
+            gloss[w] = g
+    full_text = "".join(paragraphs)
+
+    # 词表查不到的多字生词插入 Trie（level=0 标记），让分词能整词命中，
+    # 避免被拆成单字后无法与生词表对齐
+    for gw in gloss:
+        if len(gw) > 1 and gw not in vocab:
+            trie.insert(gw, 0)
 
     def render_para(para):
         parts = []
@@ -193,6 +211,10 @@ def build_essay_html(title, paragraphs, vocab, char_pinyin, expressions):
                     parts.append('<span class="word expr hsk%d" style="background:%s;color:%s" title="%s">%s</span>' % (level, "#fff3cd", color, tip, w))
                 else:
                     parts.append('<span class="word hsk%d" style="background:%s;color:%s" title="%s">%s</span>' % (level, bg, color, tip, w))
+            elif w in gloss:
+                g = gloss[w]
+                tip = "%s %s（%s）%s" % (w, g.get("pinyin", ""), g.get("pos", "") or "", g.get("meaning", ""))
+                parts.append('<span class="nw" title="%s">%s</span>' % (esc(tip), esc(w)))
             else:
                 if w in expr_words:
                     parts.append('<span class="expr" style="background:#fff3cd">%s</span>' % w)
@@ -229,23 +251,29 @@ def _highlight_expr(sent, exp):
 
 
 def build_expr_table(expressions, text):
+    """重点词句表：只展示范文正文实际出现的表达；未出现的整行跳过（不渲染警告行），
+    底部给一行浅色聚合提示，便于调用方自查配置。"""
     rows = []
+    skipped = 0
     for e in expressions or []:
         exp = e.get("expression", "")
         example = e.get("example", "").strip()
         if not example and exp:
             example = _find_example(exp, text)
-        if example:
-            ex_html = _highlight_expr(esc(example), exp)
-        else:
-            ex_html = '<span class="warn">⚠️ 范文正文中未出现该表达，请检查配置</span>'
+        if not example:
+            skipped += 1
+            continue
+        ex_html = _highlight_expr(esc(example), exp)
         rows.append(
             "<tr><td><strong>%s</strong></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
             % (esc(exp), esc(e.get("pinyin", "")), HSK_LABELS.get(e.get("hsk"), ""), esc(e.get("en_def", "")), ex_html)
         )
+    hint = ""
+    if skipped:
+        hint = '<div class="expr-skip">%d 个表达未在范文正文中出现，已自动隐藏（请检查配置，重点词句须取自范文实际内容）</div>' % skipped
     return (
-        '<h3 class="sec-h">💡 重点词句</h3><table><tr><th>表达</th><th>拼音</th><th>等级</th><th>释义</th><th>原文例句</th></tr>%s</table>'
-        % "".join(rows)
+        '<h3 class="sec-h">💡 重点词句</h3><table><tr><th>表达</th><th>拼音</th><th>等级</th><th>释义</th><th>原文例句</th></tr>%s</table>%s'
+        % ("".join(rows), hint)
     )
 
 
@@ -339,15 +367,26 @@ def build_teacher_section(tj, essay_title_html, paras_html, expr_html, paragraph
     blocks.append(card("参考范文", paper_switch + essay_title_html + '<div class="essay" id="essay-block">%s</div>%s' % (paras_html, expr_html), icon="📝 "))
     glossary = tj.get("glossary") or []
     if glossary:
-        g_rows = "".join(
-            '<tr><td class="star">★%s★</td><td>%s</td><td>%s</td></tr>'
-            % (esc(g.get("word", "")), esc(g.get("pinyin", "")), esc(g.get("meaning", "")))
-            for g in glossary
+        body_text = "".join(paragraphs)
+        g_badges = ""
+        for g in glossary:
+            w = g.get("word", "")
+            ex = (g.get("example") or "").strip()
+            if not ex and w:
+                ex = _find_example(w, body_text)
+            g_badges += (
+                '<span class="gword">★%s <i>%s</i> <b>%s</b> %s%s</span>'
+                % (esc(w), esc(g.get("pinyin", "")), esc(g.get("pos", "") or ""),
+                   esc(g.get("meaning", "")), (' <em>例：%s</em>' % esc(ex)) if ex else "")
+            )
+        note = tj.get("out_of_syllabus_note") or "生词 %d 个（%s 及以上词汇及大纲外词）" % (
+            len(glossary), tj.get("level_label") or "本等级"
         )
-        note = tj.get("out_of_syllabus_note") or "超纲词超过本等级词汇，请先解释再使用"
         blocks.append(
-            '<div class="card white"><div class="card-title">⭐ 超纲词注释</div>'
-            '<div class="note">%s</div><table>%s</table></div>' % (esc(note), g_rows)
+            '<div class="card white"><div class="card-title">📖 生词表</div>'
+            '<div class="note">%s</div>'
+            '<div class="glossary">%s</div></div>'
+            % (esc(note), g_badges)
         )
     if tj.get("structure"):
         blocks.append(card("范文结构", '<div class="para-text">%s</div>' % esc(tj.get("structure")), icon="🧩 "))
@@ -412,6 +451,8 @@ PAGE_CSS = """
   /* 方格纸：字帖米字格——每个格子含十字+两条对角线虚线（8部分），SVG data URI 纯前端实现 */
   .cell{display:inline-block;width:26px;height:26px;margin:0 -1px 2px 0;border:1px solid #a9bcd4;text-align:center;text-indent:0;line-height:26px;font-size:20px;vertical-align:top;background-color:#fff;background-image:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='26'%20height='26'%3E%3Cline%20x1='13'%20y1='0'%20x2='13'%20y2='26'%20stroke='%23d9e2f0'%20stroke-width='1'%20stroke-dasharray='2%202'/%3E%3Cline%20x1='0'%20y1='13'%20x2='26'%20y2='13'%20stroke='%23d9e2f0'%20stroke-width='1'%20stroke-dasharray='2%202'/%3E%3Cline%20x1='0'%20y1='0'%20x2='26'%20y2='26'%20stroke='%23d9e2f0'%20stroke-width='1'%20stroke-dasharray='2%202'/%3E%3Cline%20x1='26'%20y1='0'%20x2='0'%20y2='26'%20stroke='%23d9e2f0'%20stroke-width='1'%20stroke-dasharray='2%202'/%3E%3C/svg%3E");background-size:100% 100%;background-repeat:no-repeat;border-radius:0;overflow:hidden}
   .cell.blank{background:#f4f8fd;border-style:dashed}
+  /* 方格纸行容器：span 块级化（p 内不能放 div），每行固定 cols 个格子（gridify 填充），行行补满 */
+  .crow{display:block;white-space:nowrap;line-height:28px}
   .comic{background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:14px;text-align:center}
   .comic img{max-width:100%;border-radius:6px;border:1px solid #eee}
   .comic svg{max-width:100%;height:auto}
@@ -421,7 +462,16 @@ PAGE_CSS = """
   .comic-grid figcaption{font-size:13px;color:#7f8c8d;margin-top:4px}
   .word{border-radius:3px;padding:0 1px;cursor:help}
   .expr{outline:2px solid #f1c40f}
+  /* 生词（词表查不到但收录于【生词表】）：橙底虚线，与生词表同色系对齐 */
+  .nw{background:#fef5ec;color:#a35a00;border-bottom:1.5px dashed #e67e22;border-radius:3px;padding:0 2px;cursor:help}
   .warn{color:#c0392b;font-size:12px}
+  .expr-skip{font-size:12px;color:#8a93a6;margin:-6px 0 14px}
+  /* 生词表：内联流式排列，单星号 ★ 前缀 */
+  .glossary{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 2px}
+  .gword{display:inline-block;background:#fef5ec;border:1px solid #f5d9b8;color:#7a4a00;border-radius:16px;padding:4px 12px;font-size:13px;line-height:1.6}
+  .gword i{font-style:normal;color:#a35a00;margin-right:3px}
+  .gword b{font-weight:700;color:#7a4a00;margin-right:3px}
+  .gword em{font-style:normal;color:#8a93a6}
   td b{color:#1f4fd8;font-weight:700}
   .legend{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:12px 0 8px;font-size:12px}
   .lg{display:inline-block;padding:2px 10px;border-radius:10px;border:1px solid rgba(0,0,0,.06)}
@@ -445,8 +495,9 @@ PAGE_CSS = """
 
 
 def render(text, title, hsk_level, expressions, vocab, char_pinyin, comic_svg=None, comic_images=None, teacher_json=None, comic_image=None):
+    glossary = (teacher_json or {}).get("glossary") if teacher_json else None
     essay_title, paragraphs = split_essay(text)
-    essay_title_html, paras_html = build_essay_html(essay_title, paragraphs, vocab, char_pinyin, expressions)
+    essay_title_html, paras_html = build_essay_html(essay_title, paragraphs, vocab, char_pinyin, expressions, glossary)
     expr_html = build_expr_table(expressions, text) if expressions else ""
     comic_html = build_comic_html(comic_svg, comic_images, comic_image)
     real_wc = essay_chars(paragraphs)
@@ -455,6 +506,8 @@ def render(text, title, hsk_level, expressions, vocab, char_pinyin, comic_svg=No
         '<span class="lg" style="background:%s;color:%s">%s</span>' % (HSK_BG[l], HSK_COLORS[l], HSK_LABELS[l])
         for l in range(1, 7)
     )
+    if glossary:
+        legend += '<span class="lg" style="background:#fef5ec;color:#a35a00">生词（大纲外）</span>'
     legend_html = '<div class="legend">按 HSK 等级着色（悬停查看拼音）：%s</div>' % legend
 
     badges = '<div class="badges"><span class="badge">%s</span></div>' % esc(HSK_LABELS.get(hsk_level, "HSK %s" % hsk_level))
@@ -528,11 +581,9 @@ function setPaper(cls){
   if(!el)return;
   if(essayOrigHTML===null){essayOrigHTML=el.innerHTML;}
   if(cls==='paper-grid'){
-    var t=document.createElement('div');
-    t.innerHTML=essayOrigHTML;
-    gridify(t);
-    el.innerHTML=t.innerHTML;
+    el.innerHTML=essayOrigHTML;
     el.className='essay';
+    gridify(el); /* 直接在页面内容器上执行，clientWidth 才是真实行宽 */
   }else if(cls==='paper-line'){
     el.innerHTML=essayOrigHTML;
     el.className='essay paper-line';
@@ -548,35 +599,53 @@ function setPaper(cls){
   }
 }
 function gridify(root){
+  /* 方格纸：固定网格——按容器宽度算出每行格子数，逐字填充；
+     每行补满格子（末行也用空格子补齐），段落开头空两格，还原作文纸书写场景 */
   var paras=root.querySelectorAll('.essay-para');
   for(var pi=0;pi<paras.length;pi++){
     var p=paras[pi];
-    p.style.textAlign='left'; /* justify 与 inline-block 混用在部分内核导致字溢出格子，方格模式强制左对齐 */
-    var b1=document.createElement('span');b1.className='cell blank';b1.innerHTML='&nbsp;';
-    var b2=b1.cloneNode(true);
-    p.insertBefore(b2,p.firstChild);
-    p.insertBefore(b1,p.firstChild);
-    var targets=[];
-    (function rec(n){
-      for(var i=0;i<n.childNodes.length;i++){
-        var c=n.childNodes[i];
-        if(c.nodeType===3){targets.push(c);}
-        else if(c.nodeType===1&&c.tagName==='SPAN'){targets.push(c);}
-        else{rec(c);}
-      }
-    })(p);
-    for(var ti=0;ti<targets.length;ti++){
-      var t=targets[ti],frag=document.createDocumentFragment();
-      if(t.nodeType===3){
-        splitIntoCells(t.nodeValue,null,frag);
-      }else{
-        var title=t.getAttribute('title')||'';
-        var color='',st=t.getAttribute('style')||'',m=st.match(/color:([^;]+)/);
+    p.style.textAlign='left';
+    p.style.textIndent='0';
+    var cols=Math.floor(p.clientWidth/25); /* 有效格宽约25px（26px格宽-1px负边距） */
+    if(cols<2){cols=2;}
+    var chars=[];
+    var walker=document.createTreeWalker(p,NodeFilter.SHOW_TEXT,{acceptNode:function(n){return n.nodeValue&&n.nodeValue.length?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT;}});
+    var nodes=[];var w;
+    while(w=walker.nextNode()){nodes.push(w);}
+    for(var ni=0;ni<nodes.length;ni++){
+      var node=nodes[ni];
+      var sp=node.parentNode,title='',color='';
+      while(sp&&sp.nodeType===1&&sp.tagName!=='SPAN'){sp=sp.parentNode;}
+      if(sp&&sp.nodeType===1){
+        title=sp.getAttribute('title')||'';
+        var st=sp.getAttribute('style')||'',m=st.match(/color:([^;]+)/);
         if(m){color=m[1];}
-        splitIntoCells(t.textContent,{title:title,color:color},frag);
       }
-      t.parentNode.replaceChild(frag,t);
+      var v=node.nodeValue;
+      for(var ci=0;ci<v.length;ci++){
+        var ch=v[ci];
+        if(ch===' '||ch==='\t'||ch==='\\n'||ch==='\\r'){continue;}
+        chars.push({ch:ch,title:title,color:color});
+      }
     }
+    if(!chars.length){continue;}
+    var out=[];
+    for(var b=0;b<2;b++){out.push({blank:1,title:'',color:''});} /* 段首空两格 */
+    for(var i=0;i<chars.length;i++){out.push(chars[i]);}
+    var html='';
+    for(var r=0;r<out.length;r+=cols){
+      var rowHtml='';
+      for(var c=0;c<cols;c++){
+        var it=out[r+c];
+        if(!it){it={blank:1,title:'',color:''};}
+        var cls=it.blank?'cell blank':'cell';
+        var st2=it.color?('color:'+it.color):'';
+        var tit=it.title?(' title="'+escHtml(it.title)+'"'):'';
+        rowHtml+='<span class="'+cls+'"'+tit+(st2?' style="'+st2+'"':'')+'>'+(it.blank?'&nbsp;':escHtml(it.ch))+'</span>';
+      }
+      html+='<span class="crow">'+rowHtml+'</span>';
+    }
+    p.innerHTML=html;
   }
 }
 function splitIntoCells(txt,meta,frag){

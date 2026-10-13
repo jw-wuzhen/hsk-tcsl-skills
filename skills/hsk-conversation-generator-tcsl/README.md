@@ -12,8 +12,8 @@ v2.0 改为 **"提示词驱动"**（与 chinese-writing-tutor-tcsl-v3.9 同一�
 - `SKILL.md` 本身就是给平台主模型的**操作手册**：触发词、分步工作流、输出模板、错误处理
 - **任意话题都能生成**：话题先在大纲话题树定位，树外话题映射到最接近分支，不再报错
 - 参考数据（口语分级指南、话题树、40 篇对话+24 卡组+24 任务样例、2026 词表）作为生成**锚点**
-- 超纲词由 `hsk_lookup.py` 按 2026 官方词表核查并★标注；句长/书面语由 `text_stats.py` 检查
-- 输出默认是 Markdown 文本（平台直接渲染），无外部 API 依赖
+- 生词由 `hsk_lookup.py` 按 2026 官方词表核查并★标注；句长/书面语由 `text_stats.py` 检查
+- 三种材料默认交付 **HTML 学习页**（场景对话：气泡双栏对话 + 遮句自练 + 生词悬停标注，`render_dialogue_html.py` 生成；问题卡：热身/核心/拓展三级递进 + 教师提示折叠，`render_cards_html.py` 生成；角色扮演卡：A/B 角色分栏 + 参考表达胶囊，`render_cards_html.py` 生成）；均无外部 API 依赖
 
 ## 目录结构
 
@@ -32,7 +32,9 @@ hsk-conversation-generator-tcsl/
 │   └── roleplay_cards/        # 24 个参考角色扮演任务（按等级合并）
 └── scripts/               # 轻量工具脚本（纯标准库）
     ├── hsk_lookup.py          # 查词：返回词的 HSK 等级
-    └── text_stats.py          # 句长/书面语标记检查
+    ├── text_stats.py          # 句长/书面语标记检查
+    ├── render_dialogue_html.py  # 场景对话 HTML 学习页渲染（气泡双栏/遮句自练/生词悬停）
+    └── render_cards_html.py     # 问题卡/角色扮演卡 HTML 渲染（三级递进折叠 / A-B 分栏胶囊）
 ```
 
 ## 部署
@@ -54,6 +56,9 @@ hsk-conversation-generator-tcsl/
 ```bash
 python scripts/hsk_lookup.py --words "春联,旅行,老龄化"
 python scripts/text_stats.py --text "对话台词" --level hsk3
+python scripts/render_dialogue_html.py --dialogue-json /path/dialogue.json --output /path/dialogue.html
+python scripts/render_cards_html.py --cards-json /path/cards.json --mode discussion --output /path/cards.html
+python scripts/render_cards_html.py --cards-json /path/cards.json --mode roleplay --output /path/roleplay.html
 ```
 
 - 作者：EasyJet AI Team

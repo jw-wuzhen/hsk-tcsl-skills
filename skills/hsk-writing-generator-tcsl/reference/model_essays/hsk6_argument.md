@@ -6,7 +6,7 @@ count: 6
 
 # HSK6 议论文 参考范文（6篇）
 
-本文件为范文生成与推荐的参考样例。全部范文按本级词汇书写，不可避免的超纲词已★标注并附注释。生成新范文时，句长、词汇、语法须符合该等级边界（见 writing_guide.md）。
+本文件为范文生成与推荐的参考样例。全部范文按本级词汇书写，不可避免的生词已★标注并附注释。生成新范文时，句长、词汇、语法须符合该等级边界（见 writing_guide.md）。
 
 ## 1. 《网上购物会取代实体店吗？》
 
@@ -14,7 +14,7 @@ count: 6
 
 **关键词**: 网上购物、实体店、方便、便宜、体验、取代、结合、消费者
 
-**超纲词**: 综上所述 (zōngshàng suǒshù) = in summary；实体 (shítǐ) = physical entity (as in 实体店 brick-and-mortar store)；人际交往 (rénjì jiāowǎng) = interpersonal communication；经营方式 (jīngyíng fāngshì) = mode of operation / business model
+**生词**: 综上所述 (zōngshàng suǒshù) = in summary；实体 (shítǐ) = physical entity (as in 实体店 brick-and-mortar store)；人际交往 (rénjì jiāowǎng) = interpersonal communication；经营方式 (jīngyíng fāngshì) = mode of operation / business model
 
 > 近年来，网上购物在中国发展得非常快，越来越多的人习惯在手机上买东西。于是有人担心：将来实体店会不会被网上购物完全取代？我认为，网上购物虽然方便，但实体店不会消失，两者将长期共存，互相补充。
 > 
@@ -32,7 +32,7 @@ count: 6
 
 **关键词**: 手机、距离、联系、交流、沉迷、家人、感情、使用
 
-**超纲词**: 沉迷 (chénmí) = to be addicted to；皱纹 (zhòuwén) = wrinkles；奴隶 (núlì) = slave
+**生词**: 沉迷 (chénmí) = to be addicted to；皱纹 (zhòuwén) = wrinkles；奴隶 (núlì) = slave
 
 > 如今，手机已经成为我们生活中最重要的工具之一。但是，关于手机的影响，人们有两种不同的看法：有人认为手机让人们的距离越来越远，也有人认为手机让联系变得更方便。我认为，这两种说法都有道理，关键要看我们怎样使用手机。
 > 
@@ -66,7 +66,7 @@ count: 6
 
 **关键词**: 留学、语言、环境、文化、独立、费用、努力、方法
 
-**超纲词**: 显而易见 (xiǎn'ér yìjiàn) = obvious
+**生词**: 显而易见 (xiǎn'ér yìjiàn) = obvious
 
 > 关于怎样学好一门外语，一直有两种不同的看法：有人认为出国留学是最好最快的方法，也有人认为在国内一样能学好。我本人曾经有过在国外学习的经历，我觉得出国留学确实有很大的好处，但它不是唯一的办法，更不是对每个人都合适。
 > 
@@ -84,7 +84,7 @@ count: 6
 
 **关键词**: 人工智能、工作、代替、创造、人才、教育、学习、变化
 
-**超纲词**: 重复性 (chóngfùxìng) = repetitiveness；流水线 (liúshuǐxiàn) = assembly line；打字机 (dǎzìjī) = typewriter
+**生词**: 重复性 (chóngfùxìng) = repetitiveness；流水线 (liúshuǐxiàn) = assembly line；打字机 (dǎzìjī) = typewriter
 
 > 近年来，人工智能的发展速度令人吃惊。一些工作，比如翻译、客服、驾驶，正在被机器代替。于是很多人担心：人工智能会不会让大量的人失去工作？我认为，人工智能确实会改变一些工作的内容，但它不会让人类失去工作，而是会带来更多新的工作机会。
 > 
@@ -104,7 +104,7 @@ count: 6
 
 **关键词**: 大城市、小城市、机会、资源、压力、轻松、选择、适合
 
-**超纲词**: 一概而论 (yígài'érlùn) = to treat as the same；升职 (shēngzhí) = to get a promotion
+**生词**: 一概而论 (yígài'érlùn) = to treat as the same；升职 (shēngzhí) = to get a promotion
 
 > 大学毕业后，去大城市工作还是回小城市生活？这是许多年轻人都会面对的选择。有人说大城市机会多，一定要去；也有人说小城市生活轻松，回小城市更幸福。我认为，大城市和小城市各有各的好处，年轻人应该根据自己的情况和目标做出选择，不能一概而论。
 > 

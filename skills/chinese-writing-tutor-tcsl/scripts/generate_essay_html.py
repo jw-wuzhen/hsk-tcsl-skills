@@ -10,10 +10,12 @@ Or pipe essay text:
 
 The script:
 1. Loads HSK vocabulary from CSV files (levels 1-6)
-2. Segments essay text using longest-match against HSK vocab + common words
+2. Segments essay text by scanning every HSK word: words present in the essay
+   get marked with their level/pinyin, absent words are skipped
 3. Annotates each word with pinyin, HSK level, English definition
 4. Highlights good expressions
-5. Generates a beautiful standalone HTML file
+5. Generates a beautiful standalone HTML file (standard composition format:
+   title on its own line indented 4 chars 标题空四格, each paragraph indented 2 chars)
 """
 import sys
 import os
@@ -111,317 +113,11 @@ def load_hsk_vocab(vocab_dir):
 
 
 def segment_text(text, vocab):
-    """Segment Chinese text using longest-match against HSK vocab.
+    """Word-list-scan segmentation for the reading view:
+    scan every word in the HSK vocabulary (longest first), check whether it
+    occurs in the essay; mark found words in place, skip words not present.
     Returns list of (word, is_punctuation) tuples.
     """
-    # Common function words and particles not always in HSK list
-    common_words = {
-        "的": {"hsk": 1, "pinyin": "de", "en_def": "structural particle", "pos": "part"},
-        "了": {"hsk": 1, "pinyin": "le", "en_def": "completed action", "pos": "part"},
-        "是": {"hsk": 1, "pinyin": "shì", "en_def": "is; to be", "pos": "v"},
-        "在": {"hsk": 1, "pinyin": "zài", "en_def": "at; in; on", "pos": "prep"},
-        "有": {"hsk": 1, "pinyin": "yǒu", "en_def": "to have", "pos": "v"},
-        "不": {"hsk": 1, "pinyin": "bù", "en_def": "not", "pos": "adv"},
-        "我": {"hsk": 1, "pinyin": "wǒ", "en_def": "I; me", "pos": "pron"},
-        "你": {"hsk": 1, "pinyin": "nǐ", "en_def": "you", "pos": "pron"},
-        "他": {"hsk": 1, "pinyin": "tā", "en_def": "he; him", "pos": "pron"},
-        "她": {"hsk": 1, "pinyin": "tā", "en_def": "she; her", "pos": "pron"},
-        "们": {"hsk": 1, "pinyin": "men", "en_def": "plural marker", "pos": "suffix"},
-        "和": {"hsk": 1, "pinyin": "hé", "en_def": "and", "pos": "conj"},
-        "就": {"hsk": 2, "pinyin": "jiù", "en_def": "then; just", "pos": "adv"},
-        "都": {"hsk": 2, "pinyin": "dōu", "en_def": "all; both", "pos": "adv"},
-        "也": {"hsk": 1, "pinyin": "yě", "en_def": "also; too", "pos": "adv"},
-        "这": {"hsk": 1, "pinyin": "zhè", "en_def": "this", "pos": "pron"},
-        "那": {"hsk": 1, "pinyin": "nà", "en_def": "that", "pos": "pron"},
-        "要": {"hsk": 1, "pinyin": "yào", "en_def": "to want; to need", "pos": "v"},
-        "会": {"hsk": 1, "pinyin": "huì", "en_def": "can; will", "pos": "v"},
-        "能": {"hsk": 2, "pinyin": "néng", "en_def": "can; able to", "pos": "v"},
-        "着": {"hsk": 2, "pinyin": "zhe", "en_def": "particle for ongoing action", "pos": "part"},
-        "过": {"hsk": 2, "pinyin": "guò", "en_def": "particle for past experience", "pos": "part"},
-        "把": {"hsk": 3, "pinyin": "bǎ", "en_def": "object marker", "pos": "prep"},
-        "被": {"hsk": 3, "pinyin": "bèi", "en_def": "passive marker", "pos": "prep"},
-        "让": {"hsk": 3, "pinyin": "ràng", "en_def": "to let; to allow", "pos": "v"},
-        "给": {"hsk": 1, "pinyin": "gěi", "en_def": "to give; for", "pos": "v"},
-        "对": {"hsk": 1, "pinyin": "duì", "en_def": "to; toward; correct", "pos": "prep"},
-        "从": {"hsk": 2, "pinyin": "cóng", "en_def": "from", "pos": "prep"},
-        "到": {"hsk": 1, "pinyin": "dào", "en_def": "to; until; arrive", "pos": "v"},
-        "里": {"hsk": 1, "pinyin": "lǐ", "en_def": "in; inside", "pos": "n"},
-        "上": {"hsk": 1, "pinyin": "shàng", "en_def": "on; above", "pos": "n"},
-        "下": {"hsk": 1, "pinyin": "xià", "en_def": "down; below", "pos": "n"},
-        "中": {"hsk": 2, "pinyin": "zhōng", "en_def": "in; among", "pos": "n"},
-        "地": {"hsk": 2, "pinyin": "de", "en_def": "adverb marker", "pos": "part"},
-        "得": {"hsk": 2, "pinyin": "de", "en_def": "complement marker", "pos": "part"},
-        "又": {"hsk": 2, "pinyin": "yòu", "en_def": "again; also", "pos": "adv"},
-        "还": {"hsk": 2, "pinyin": "hái", "en_def": "still; also", "pos": "adv"},
-        "很": {"hsk": 1, "pinyin": "hěn", "en_def": "very", "pos": "adv"},
-        "但": {"hsk": 3, "pinyin": "dàn", "en_def": "but; however", "pos": "conj"},
-        "而": {"hsk": 3, "pinyin": "ér", "en_def": "and; but", "pos": "conj"},
-        "与": {"hsk": 3, "pinyin": "yǔ", "en_def": "and; with", "pos": "conj"},
-        "或": {"hsk": 3, "pinyin": "huò", "en_def": "or", "pos": "conj"},
-        "已": {"hsk": 3, "pinyin": "yǐ", "en_def": "already", "pos": "adv"},
-        "才": {"hsk": 3, "pinyin": "cái", "en_def": "just; only then", "pos": "adv"},
-        "再": {"hsk": 2, "pinyin": "zài", "en_def": "again; once more", "pos": "adv"},
-        "只": {"hsk": 2, "pinyin": "zhǐ", "en_def": "only; just", "pos": "adv"},
-        "一": {"hsk": 1, "pinyin": "yī", "en_def": "one", "pos": "num"},
-        "个": {"hsk": 1, "pinyin": "gè", "en_def": "measure word", "pos": "measure"},
-        "人": {"hsk": 1, "pinyin": "rén", "en_def": "person; people", "pos": "n"},
-        "大": {"hsk": 1, "pinyin": "dà", "en_def": "big; large", "pos": "a"},
-        "小": {"hsk": 1, "pinyin": "xiǎo", "en_def": "small; little", "pos": "a"},
-        "多": {"hsk": 1, "pinyin": "duō", "en_def": "many; much", "pos": "a"},
-        "少": {"hsk": 1, "pinyin": "shǎo", "en_def": "few; less", "pos": "a"},
-        "好": {"hsk": 1, "pinyin": "hǎo", "en_def": "good", "pos": "a"},
-        "来": {"hsk": 1, "pinyin": "lái", "en_def": "to come", "pos": "v"},
-        "去": {"hsk": 1, "pinyin": "qù", "en_def": "to go", "pos": "v"},
-        "看": {"hsk": 1, "pinyin": "kàn", "en_def": "to see; to look", "pos": "v"},
-        "说": {"hsk": 1, "pinyin": "shuō", "en_def": "to say; to speak", "pos": "v"},
-        "做": {"hsk": 2, "pinyin": "zuò", "en_def": "to do; to make", "pos": "v"},
-        "想": {"hsk": 1, "pinyin": "xiǎng", "en_def": "to think; to want", "pos": "v"},
-        "它": {"hsk": 1, "pinyin": "tā", "en_def": "it", "pos": "pron"},
-        "为": {"hsk": 2, "pinyin": "wèi", "en_def": "for; because of", "pos": "prep"},
-        "所": {"hsk": 3, "pinyin": "suǒ", "en_def": "that which", "pos": "pron"},
-        "以": {"hsk": 2, "pinyin": "yǐ", "en_def": "by means of; with", "pos": "prep"},
-        "可": {"hsk": 2, "pinyin": "kě", "en_def": "can; may", "pos": "v"},
-        "个": {"hsk": 1, "pinyin": "gè", "en_def": "general measure word", "pos": "measure"},
-        "吧": {"hsk": 1, "pinyin": "ba", "en_def": "particle (suggestion)", "pos": "part"},
-        "呢": {"hsk": 1, "pinyin": "ne", "en_def": "particle (question)", "pos": "part"},
-        "啊": {"hsk": 2, "pinyin": "a", "en_def": "particle (emotion)", "pos": "part"},
-        "吗": {"hsk": 1, "pinyin": "ma", "en_def": "particle (yes/no question)", "pos": "part"},
-        # Common single chars that appear in compound words
-        "美": {"hsk": 0, "pinyin": "měi", "en_def": "beautiful", "pos": "a"},
-        "丽": {"hsk": 0, "pinyin": "lì", "en_def": "beautiful", "pos": "a"},
-        "福": {"hsk": 0, "pinyin": "fú", "en_def": "fortune; blessing", "pos": "n"},
-        "景": {"hsk": 0, "pinyin": "jǐng", "en_def": "scenery; view", "pos": "n"},
-        "情": {"hsk": 0, "pinyin": "qíng", "en_def": "feeling; emotion", "pos": "n"},
-        "事": {"hsk": 0, "pinyin": "shì", "en_def": "thing; matter", "pos": "n"},
-        "物": {"hsk": 0, "pinyin": "wù", "en_def": "thing; object", "pos": "n"},
-        "心": {"hsk": 1, "pinyin": "xīn", "en_def": "heart", "pos": "n"},
-        "力": {"hsk": 1, "pinyin": "lì", "en_def": "power; force", "pos": "n"},
-        "道": {"hsk": 2, "pinyin": "dào", "en_def": "way; road; to say", "pos": "n"},
-        "理": {"hsk": 0, "pinyin": "lǐ", "en_def": "reason; logic", "pos": "n"},
-        "明": {"hsk": 1, "pinyin": "míng", "en_def": "bright; clear", "pos": "a"},
-        "天": {"hsk": 1, "pinyin": "tiān", "en_def": "sky; day", "pos": "n"},
-        "地": {"hsk": 1, "pinyin": "dì", "en_def": "earth; ground", "pos": "n"},
-        "日": {"hsk": 1, "pinyin": "rì", "en_def": "sun; day", "pos": "n"},
-        "月": {"hsk": 1, "pinyin": "yuè", "en_def": "moon; month", "pos": "n"},
-        "年": {"hsk": 1, "pinyin": "nián", "en_def": "year", "pos": "n"},
-        "时": {"hsk": 1, "pinyin": "shí", "en_def": "time", "pos": "n"},
-        "分": {"hsk": 1, "pinyin": "fēn", "en_def": "minute; to divide", "pos": "n"},
-        "点": {"hsk": 1, "pinyin": "diǎn", "en_def": "point; o'clock", "pos": "n"},
-        "话": {"hsk": 1, "pinyin": "huà", "en_def": "speech; words", "pos": "n"},
-        "字": {"hsk": 1, "pinyin": "zì", "en_def": "character; word", "pos": "n"},
-        "书": {"hsk": 1, "pinyin": "shū", "en_def": "book", "pos": "n"},
-        "手": {"hsk": 1, "pinyin": "shǒu", "en_def": "hand", "pos": "n"},
-        "目": {"hsk": 0, "pinyin": "mù", "en_def": "eye; item", "pos": "n"},
-        "口": {"hsk": 1, "pinyin": "kǒu", "en_def": "mouth; entrance", "pos": "n"},
-        "门": {"hsk": 1, "pinyin": "mén", "en_def": "door; gate", "pos": "n"},
-        "路": {"hsk": 1, "pinyin": "lù", "en_def": "road; way", "pos": "n"},
-        "头": {"hsk": 1, "pinyin": "tóu", "en_def": "head", "pos": "n"},
-        "长": {"hsk": 1, "pinyin": "cháng", "en_def": "long", "pos": "a"},
-        "高": {"hsk": 1, "pinyin": "gāo", "en_def": "tall; high", "pos": "a"},
-        "低": {"hsk": 0, "pinyin": "dī", "en_def": "low", "pos": "a"},
-        "快": {"hsk": 1, "pinyin": "kuài", "en_def": "fast; quick", "pos": "a"},
-        "慢": {"hsk": 0, "pinyin": "màn", "en_def": "slow", "pos": "a"},
-        "远": {"hsk": 2, "pinyin": "yuǎn", "en_def": "far", "pos": "a"},
-        "近": {"hsk": 2, "pinyin": "jìn", "en_def": "near", "pos": "a"},
-        "重": {"hsk": 2, "pinyin": "zhòng", "en_def": "heavy; important", "pos": "a"},
-        "轻": {"hsk": 0, "pinyin": "qīng", "en_def": "light", "pos": "a"},
-        "深": {"hsk": 2, "pinyin": "shēn", "en_def": "deep", "pos": "a"},
-        "浅": {"hsk": 0, "pinyin": "qiǎn", "en_def": "shallow", "pos": "a"},
-        "真": {"hsk": 1, "pinyin": "zhēn", "en_def": "true; real", "pos": "a"},
-        "假": {"hsk": 0, "pinyin": "jiǎ", "en_def": "fake; false", "pos": "a"},
-        "老": {"hsk": 1, "pinyin": "lǎo", "en_def": "old", "pos": "a"},
-        "新": {"hsk": 1, "pinyin": "xīn", "en_def": "new", "pos": "a"},
-        "早": {"hsk": 1, "pinyin": "zǎo", "en_def": "early", "pos": "a"},
-        "晚": {"hsk": 1, "pinyin": "wǎn", "en_def": "late; evening", "pos": "a"},
-        "前": {"hsk": 1, "pinyin": "qián", "en_def": "front; before", "pos": "n"},
-        "后": {"hsk": 1, "pinyin": "hòu", "en_def": "back; after", "pos": "n"},
-        "左": {"hsk": 1, "pinyin": "zuǒ", "en_def": "left", "pos": "n"},
-        "右": {"hsk": 1, "pinyin": "yòu", "en_def": "right", "pos": "n"},
-        "内": {"hsk": 2, "pinyin": "nèi", "en_def": "inside", "pos": "n"},
-        "外": {"hsk": 1, "pinyin": "wài", "en_def": "outside", "pos": "n"},
-        "东": {"hsk": 1, "pinyin": "dōng", "en_def": "east", "pos": "n"},
-        "西": {"hsk": 1, "pinyin": "xī", "en_def": "west", "pos": "n"},
-        "南": {"hsk": 1, "pinyin": "nán", "en_def": "south", "pos": "n"},
-        "北": {"hsk": 1, "pinyin": "běi", "en_def": "north", "pos": "n"},
-        "声": {"hsk": 1, "pinyin": "shēng", "en_def": "sound; voice", "pos": "n"},
-        "色": {"hsk": 1, "pinyin": "sè", "en_def": "color", "pos": "n"},
-        "光": {"hsk": 1, "pinyin": "guāng", "en_def": "light", "pos": "n"},
-        "风": {"hsk": 1, "pinyin": "fēng", "en_def": "wind", "pos": "n"},
-        "雨": {"hsk": 1, "pinyin": "yǔ", "en_def": "rain", "pos": "n"},
-        "云": {"hsk": 1, "pinyin": "yún", "en_def": "cloud", "pos": "n"},
-        "水": {"hsk": 1, "pinyin": "shuǐ", "en_def": "water", "pos": "n"},
-        "火": {"hsk": 1, "pinyin": "huǒ", "en_def": "fire", "pos": "n"},
-        "山": {"hsk": 1, "pinyin": "shān", "en_def": "mountain", "pos": "n"},
-        "河": {"hsk": 1, "pinyin": "hé", "en_def": "river", "pos": "n"},
-        "花": {"hsk": 1, "pinyin": "huā", "en_def": "flower", "pos": "n"},
-        "草": {"hsk": 0, "pinyin": "cǎo", "en_def": "grass", "pos": "n"},
-        "树": {"hsk": 1, "pinyin": "shù", "en_def": "tree", "pos": "n"},
-        "叶": {"hsk": 0, "pinyin": "yè", "en_def": "leaf", "pos": "n"},
-        "鸟": {"hsk": 1, "pinyin": "niǎo", "en_def": "bird", "pos": "n"},
-        "鱼": {"hsk": 1, "pinyin": "yú", "en_def": "fish", "pos": "n"},
-        "马": {"hsk": 1, "pinyin": "mǎ", "en_def": "horse", "pos": "n"},
-        "牛": {"hsk": 0, "pinyin": "niú", "en_def": "cow; ox", "pos": "n"},
-        "羊": {"hsk": 0, "pinyin": "yáng", "en_def": "sheep", "pos": "n"},
-        "虫": {"hsk": 0, "pinyin": "chóng", "en_def": "insect; bug", "pos": "n"},
-        "走": {"hsk": 1, "pinyin": "zǒu", "en_def": "to walk; to go", "pos": "v"},
-        "跑": {"hsk": 0, "pinyin": "pǎo", "en_def": "to run", "pos": "v"},
-        "飞": {"hsk": 1, "pinyin": "fēi", "en_def": "to fly", "pos": "v"},
-        "吃": {"hsk": 1, "pinyin": "chī", "en_def": "to eat", "pos": "v"},
-        "喝": {"hsk": 1, "pinyin": "hē", "en_def": "to drink", "pos": "v"},
-        "住": {"hsk": 1, "pinyin": "zhù", "en_def": "to live; to stay", "pos": "v"},
-        "用": {"hsk": 1, "pinyin": "yòng", "en_def": "to use", "pos": "v"},
-        "爱": {"hsk": 1, "pinyin": "ài", "en_def": "to love", "pos": "v"},
-        "怕": {"hsk": 0, "pinyin": "pà", "en_def": "to fear", "pos": "v"},
-        "笑": {"hsk": 2, "pinyin": "xiào", "en_def": "to laugh; smile", "pos": "v"},
-        "哭": {"hsk": 0, "pinyin": "kū", "en_def": "to cry", "pos": "v"},
-        "听": {"hsk": 1, "pinyin": "tīng", "en_def": "to listen; hear", "pos": "v"},
-        "写": {"hsk": 1, "pinyin": "xiě", "en_def": "to write", "pos": "v"},
-        "读": {"hsk": 2, "pinyin": "dú", "en_def": "to read", "pos": "v"},
-        "学": {"hsk": 1, "pinyin": "xué", "en_def": "to learn; study", "pos": "v"},
-        "教": {"hsk": 2, "pinyin": "jiāo", "en_def": "to teach", "pos": "v"},
-        "买": {"hsk": 1, "pinyin": "mǎi", "en_def": "to buy", "pos": "v"},
-        "卖": {"hsk": 2, "pinyin": "mài", "en_def": "to sell", "pos": "v"},
-        "开": {"hsk": 1, "pinyin": "kāi", "en_def": "to open", "pos": "v"},
-        "关": {"hsk": 1, "pinyin": "guān", "en_def": "to close; shut", "pos": "v"},
-        "坐": {"hsk": 1, "pinyin": "zuò", "en_def": "to sit", "pos": "v"},
-        "站": {"hsk": 2, "pinyin": "zhàn", "en_def": "to stand", "pos": "v"},
-        "死": {"hsk": 2, "pinyin": "sǐ", "en_def": "to die", "pos": "v"},
-        "活": {"hsk": 2, "pinyin": "huó", "en_def": "to live; alive", "pos": "v"},
-        "白": {"hsk": 1, "pinyin": "bái", "en_def": "white", "pos": "a"},
-        "黑": {"hsk": 1, "pinyin": "hēi", "en_def": "black", "pos": "a"},
-        "红": {"hsk": 2, "pinyin": "hóng", "en_def": "red", "pos": "a"},
-        "绿": {"hsk": 0, "pinyin": "lǜ", "en_def": "green", "pos": "a"},
-        "蓝": {"hsk": 0, "pinyin": "lán", "en_def": "blue", "pos": "a"},
-        "黄": {"hsk": 1, "pinyin": "huáng", "en_def": "yellow", "pos": "a"},
-        "金": {"hsk": 2, "pinyin": "jīn", "en_def": "gold", "pos": "n"},
-        "银": {"hsk": 0, "pinyin": "yín", "en_def": "silver", "pos": "n"},
-        "铁": {"hsk": 0, "pinyin": "tiě", "en_def": "iron", "pos": "n"},
-        "石": {"hsk": 0, "pinyin": "shí", "en_def": "stone; rock", "pos": "n"},
-        "土": {"hsk": 0, "pinyin": "tǔ", "en_def": "earth; soil", "pos": "n"},
-        "田": {"hsk": 0, "pinyin": "tián", "en_def": "field; farmland", "pos": "n"},
-        "林": {"hsk": 0, "pinyin": "lín", "en_def": "forest; woods", "pos": "n"},
-        "木": {"hsk": 0, "pinyin": "mù", "en_def": "wood; tree", "pos": "n"},
-        "足": {"hsk": 0, "pinyin": "zú", "en_def": "foot; enough", "pos": "n"},
-        "身": {"hsk": 0, "pinyin": "shēn", "en_def": "body", "pos": "n"},
-        "体": {"hsk": 1, "pinyin": "tǐ", "en_def": "body", "pos": "n"},
-        "面": {"hsk": 1, "pinyin": "miàn", "en_def": "face; side", "pos": "n"},
-        "首": {"hsk": 0, "pinyin": "shǒu", "en_def": "head; first", "pos": "n"},
-        "半": {"hsk": 2, "pinyin": "bàn", "en_def": "half", "pos": "num"},
-        "双": {"hsk": 0, "pinyin": "shuāng", "en_def": "pair; double", "pos": "num"},
-        "万": {"hsk": 1, "pinyin": "wàn", "en_def": "ten thousand", "pos": "num"},
-        "千": {"hsk": 1, "pinyin": "qiān", "en_def": "thousand", "pos": "num"},
-        "百": {"hsk": 1, "pinyin": "bǎi", "en_def": "hundred", "pos": "num"},
-        "十": {"hsk": 1, "pinyin": "shí", "en_def": "ten", "pos": "num"},
-        "两": {"hsk": 1, "pinyin": "liǎng", "en_def": "two", "pos": "num"},
-        "第": {"hsk": 2, "pinyin": "dì", "en_def": "number prefix", "pos": "prefix"},
-        "次": {"hsk": 1, "pinyin": "cì", "en_def": "time; order", "pos": "measure"},
-        "回": {"hsk": 1, "pinyin": "huí", "en_def": "to return; time", "pos": "v"},
-        "位": {"hsk": 1, "pinyin": "wèi", "en_def": "seat; position", "pos": "measure"},
-        "本": {"hsk": 1, "pinyin": "běn", "en_def": "book; measure word", "pos": "measure"},
-        "只": {"hsk": 1, "pinyin": "zhǐ", "en_def": "only; measure word", "pos": "measure"},
-        "些": {"hsk": 2, "pinyin": "xiē", "en_def": "some; a few", "pos": "measure"},
-        "每": {"hsk": 2, "pinyin": "měi", "en_def": "every; each", "pos": "pron"},
-        "各": {"hsk": 3, "pinyin": "gè", "en_def": "each; every", "pos": "pron"},
-        "另": {"hsk": 0, "pinyin": "lìng", "en_def": "another; other", "pos": "pron"},
-        "别": {"hsk": 2, "pinyin": "bié", "en_def": "other; don't", "pos": "pron"},
-        "其": {"hsk": 3, "pinyin": "qí", "en_def": "its; that", "pos": "pron"},
-        "此": {"hsk": 0, "pinyin": "cǐ", "en_def": "this", "pos": "pron"},
-        "若": {"hsk": 0, "pinyin": "ruò", "en_def": "if; as if", "pos": "conj"},
-        "故": {"hsk": 0, "pinyin": "gù", "en_def": "therefore; old", "pos": "conj"},
-        "虽": {"hsk": 0, "pinyin": "suī", "en_def": "although", "pos": "conj"},
-        "因": {"hsk": 3, "pinyin": "yīn", "en_def": "cause; because", "pos": "prep"},
-        "由": {"hsk": 3, "pinyin": "yóu", "en_def": "from; by", "pos": "prep"},
-        "让": {"hsk": 3, "pinyin": "ràng", "en_def": "to let; allow", "pos": "v"},
-        "使": {"hsk": 3, "pinyin": "shǐ", "en_def": "to make; cause", "pos": "v"},
-        "令": {"hsk": 0, "pinyin": "lìng", "en_def": "to make; cause", "pos": "v"},
-        "成": {"hsk": 2, "pinyin": "chéng", "en_def": "to become; succeed", "pos": "v"},
-        "化": {"hsk": 0, "pinyin": "huà", "en_def": "to change; transform", "pos": "v"},
-        "动": {"hsk": 2, "pinyin": "dòng", "en_def": "to move", "pos": "v"},
-        "静": {"hsk": 0, "pinyin": "jìng", "en_def": "quiet; still", "pos": "a"},
-        "安": {"hsk": 0, "pinyin": "ān", "en_def": "safe; peaceful", "pos": "a"},
-        "全": {"hsk": 2, "pinyin": "quán", "en_def": "all; complete", "pos": "a"},
-        "保": {"hsk": 0, "pinyin": "bǎo", "en_def": "to protect; keep", "pos": "v"},
-        "持": {"hsk": 0, "pinyin": "chí", "en_def": "to hold; maintain", "pos": "v"},
-        "生": {"hsk": 1, "pinyin": "shēng", "en_def": "to be born; life", "pos": "v"},
-        "死": {"hsk": 2, "pinyin": "sǐ", "en_def": "to die; death", "pos": "v"},
-        "平": {"hsk": 0, "pinyin": "píng", "en_def": "flat; peaceful", "pos": "a"},
-        "正": {"hsk": 1, "pinyin": "zhèng", "en_def": "correct; straight", "pos": "a"},
-        "反": {"hsk": 2, "pinyin": "fǎn", "en_def": "reverse; opposite", "pos": "a"},
-        "同": {"hsk": 2, "pinyin": "tóng", "en_def": "same; together", "pos": "a"},
-        "异": {"hsk": 0, "pinyin": "yì", "en_def": "different; strange", "pos": "a"},
-        "特": {"hsk": 0, "pinyin": "tè", "en_def": "special; particular", "pos": "a"},
-        "奇": {"hsk": 0, "pinyin": "qí", "en_def": "strange; wonder", "pos": "a"},
-        "怪": {"hsk": 0, "pinyin": "guài", "en_def": "strange; to blame", "pos": "a"},
-        "意": {"hsk": 0, "pinyin": "yì", "en_def": "meaning; intention", "pos": "n"},
-        "义": {"hsk": 0, "pinyin": "yì", "en_def": "meaning; justice", "pos": "n"},
-        "思": {"hsk": 1, "pinyin": "sī", "en_def": "to think; thought", "pos": "v"},
-        "念": {"hsk": 0, "pinyin": "niàn", "en_def": "to miss; read", "pos": "v"},
-        "记": {"hsk": 2, "pinyin": "jì", "en_def": "to remember; record", "pos": "v"},
-        "忘": {"hsk": 0, "pinyin": "wàng", "en_def": "to forget", "pos": "v"},
-        "感": {"hsk": 0, "pinyin": "gǎn", "en_def": "to feel; sense", "pos": "v"},
-        "觉": {"hsk": 1, "pinyin": "jué", "en_def": "to feel; wake", "pos": "v"},
-        "知": {"hsk": 2, "pinyin": "zhī", "en_def": "to know", "pos": "v"},
-        "识": {"hsk": 0, "pinyin": "shí", "en_def": "to know; knowledge", "pos": "v"},
-        "信": {"hsk": 2, "pinyin": "xìn", "en_def": "letter; trust", "pos": "n"},
-        "望": {"hsk": 0, "pinyin": "wàng", "en_def": "to look; hope", "pos": "v"},
-        "期": {"hsk": 0, "pinyin": "qī", "en_def": "period; hope", "pos": "n"},
-        "待": {"hsk": 0, "pinyin": "dài", "en_def": "to wait; treat", "pos": "v"},
-        "自": {"hsk": 2, "pinyin": "zì", "en_def": "self; from", "pos": "pron"},
-        "己": {"hsk": 1, "pinyin": "jǐ", "en_def": "self", "pos": "pron"},
-        "相": {"hsk": 3, "pinyin": "xiāng", "en_def": "mutually", "pos": "adv"},
-        "比": {"hsk": 2, "pinyin": "bǐ", "en_def": "to compare", "pos": "v"},
-        "较": {"hsk": 0, "pinyin": "jiào", "en_def": "to compare; relatively", "pos": "v"},
-        "最": {"hsk": 2, "pinyin": "zuì", "en_def": "most", "pos": "adv"},
-        "更": {"hsk": 2, "pinyin": "gèng", "en_def": "more; even more", "pos": "adv"},
-        "太": {"hsk": 1, "pinyin": "tài", "en_def": "too; very", "pos": "adv"},
-        "极": {"hsk": 0, "pinyin": "jí", "en_def": "extremely", "pos": "adv"},
-        "非": {"hsk": 3, "pinyin": "fēi", "en_def": "not; non-", "pos": "adv"},
-        "常": {"hsk": 1, "pinyin": "cháng", "en_def": "often; constant", "pos": "adv"},
-        "须": {"hsk": 0, "pinyin": "xū", "en_def": "must; need", "pos": "v"},
-        "需": {"hsk": 0, "pinyin": "xū", "en_def": "to need; require", "pos": "v"},
-        "应": {"hsk": 0, "pinyin": "yīng", "en_def": "should; respond", "pos": "v"},
-        "当": {"hsk": 0, "pinyin": "dāng", "en_def": "should; to be", "pos": "v"},
-        "肯": {"hsk": 0, "pinyin": "kěn", "en_def": "willing; to agree", "pos": "v"},
-        "敢": {"hsk": 0, "pinyin": "gǎn", "en_def": "to dare", "pos": "v"},
-        "或": {"hsk": 3, "pinyin": "huò", "en_def": "or; perhaps", "pos": "conj"},
-        "者": {"hsk": 0, "pinyin": "zhě", "en_def": "person who...", "pos": "suffix"},
-        "的": {"hsk": 1, "pinyin": "de", "en_def": "possessive particle", "pos": "part"},
-        "确": {"hsk": 0, "pinyin": "què", "en_def": "indeed; true", "pos": "a"},
-        "实": {"hsk": 2, "pinyin": "shí", "en_def": "real; solid", "pos": "a"},
-        "行": {"hsk": 2, "pinyin": "xíng", "en_def": "to go; OK", "pos": "v"},
-        "止": {"hsk": 0, "pinyin": "zhǐ", "en_def": "to stop", "pos": "v"},
-        "起": {"hsk": 2, "pinyin": "qǐ", "en_def": "to rise; start", "pos": "v"},
-        "落": {"hsk": 0, "pinyin": "luò", "en_def": "to fall; drop", "pos": "v"},
-        "转": {"hsk": 2, "pinyin": "zhuǎn", "en_def": "to turn; change", "pos": "v"},
-        "换": {"hsk": 0, "pinyin": "huàn", "en_def": "to change; exchange", "pos": "v"},
-        "接": {"hsk": 2, "pinyin": "jiē", "en_def": "to receive; connect", "pos": "v"},
-        "受": {"hsk": 2, "pinyin": "shòu", "en_def": "to receive; accept", "pos": "v"},
-        "给": {"hsk": 1, "pinyin": "gěi", "en_def": "to give", "pos": "v"},
-        "取": {"hsk": 0, "pinyin": "qǔ", "en_def": "to take; get", "pos": "v"},
-        "放": {"hsk": 1, "pinyin": "fàng", "en_def": "to put; release", "pos": "v"},
-        "带": {"hsk": 2, "pinyin": "dài", "en_def": "to bring; carry", "pos": "v"},
-        "拉": {"hsk": 0, "pinyin": "lā", "en_def": "to pull", "pos": "v"},
-        "推": {"hsk": 0, "pinyin": "tuī", "en_def": "to push", "pos": "v"},
-        "打": {"hsk": 1, "pinyin": "dǎ", "en_def": "to hit; play", "pos": "v"},
-        "找": {"hsk": 1, "pinyin": "zhǎo", "en_def": "to look for; find", "pos": "v"},
-        "穿": {"hsk": 2, "pinyin": "chuān", "en_def": "to wear; pierce", "pos": "v"},
-        "戴": {"hsk": 0, "pinyin": "dài", "en_def": "to wear (accessories)", "pos": "v"},
-        "洗": {"hsk": 0, "pinyin": "xǐ", "en_def": "to wash", "pos": "v"},
-        "照": {"hsk": 2, "pinyin": "zhào", "en_def": "to shine; photo", "pos": "v"},
-        "算": {"hsk": 0, "pinyin": "suàn", "en_def": "to calculate; count", "pos": "v"},
-        "数": {"hsk": 1, "pinyin": "shù", "en_def": "number; to count", "pos": "n"},
-        "量": {"hsk": 2, "pinyin": "liàng", "en_def": "quantity; amount", "pos": "n"},
-        "度": {"hsk": 0, "pinyin": "dù", "en_def": "degree; extent", "pos": "n"},
-        "线": {"hsk": 0, "pinyin": "xiàn", "en_def": "line; thread", "pos": "n"},
-        "面": {"hsk": 1, "pinyin": "miàn", "en_def": "face; surface", "pos": "n"},
-        "点": {"hsk": 1, "pinyin": "diǎn", "en_def": "point; dot", "pos": "n"},
-    }
-
-    # Merge common words into vocab (don't override existing HSK entries)
-    for word, info in common_words.items():
-        if word not in vocab:
-            info["pinyin"] = normalize_pinyin(info.get("pinyin", ""))
-            vocab[word] = info
 
     # Punctuation pattern
     punct_pattern = re.compile(r'[，。！？、；：""''「」（）()【】《》〈〉…—·,.!?;:\' \t\n\r…]')
@@ -505,6 +201,38 @@ def segment_text(text, vocab):
 
 def esc(text):
     return html_module.escape(str(text), quote=False)
+
+
+# POS abbreviation codes used in HSK CSVs -> full English names
+POS_FULL = {
+    "n": "noun", "v": "verb", "a": "adjective", "ad": "adverb", "d": "adverb",
+    "r": "pronoun", "m": "measure word", "q": "measure word", "p": "preposition",
+    "c": "conjunction", "u": "particle", "e": "interjection", "t": "time word",
+    "s": "locality word", "b": "distinguishing word", "z": "state word",
+    "h": "prefix", "k": "suffix", "j": "abbreviation", "i": "idiom",
+    "l": "set phrase", "g": "morpheme", "o": "onomatopoeia", "f": "locality word",
+}
+# Combination codes used in HSK CSVs -> base codes
+COMBO_POS = {
+    "vn": ["v", "n"], "an": ["a", "n"], "vd": ["v", "d"],
+    "nv": ["n", "v"], "av": ["a", "v"], "dv": ["d", "v"],
+}
+
+
+def expand_pos(pos):
+    """Expand POS codes like 'v;vn;b' to full English names, no duplicates."""
+    if not pos:
+        return ""
+    parts = []
+    for p in pos.split(";"):
+        p = p.strip()
+        if not p:
+            continue
+        for code in COMBO_POS.get(p, [p]):
+            full = POS_FULL.get(code, code)
+            if full not in parts:
+                parts.append(full)
+    return " / ".join(parts)
 
 
 def render_word(word_text, vocab, highlight_words):
@@ -609,6 +337,152 @@ def extract_example_sentence(essay_text, expression):
     return ""
 
 
+LOW_VALUE_POS = {"r", "u", "c", "p", "e", "m", "q", "h", "k", "j"}
+MAX_NEW_WORDS = 12
+
+
+def collect_new_words(essay_text, vocab, user_level, expressions=()):
+    """Collect new words, curated by learning value (max 12).
+
+    Candidates are words at or above the user's HSK level (words BELOW the
+    user's level are NEVER new words). Only high-value words are shown:
+    pure function words (pronouns/particles/conjunctions/prepositions/measure
+    words etc.) are skipped, words already taught in Key Words & Sentences
+    are not repeated, and words nearer the user's level rank first, then
+    longer words (idioms), then earlier words in the essay.
+    """
+    try:
+        user_level = int(user_level)
+    except (TypeError, ValueError):
+        user_level = 6
+    if user_level < 1:
+        user_level = 1
+    if user_level > 6:
+        user_level = 6
+
+    taught = set()
+    for ex in expressions or ():
+        word = (ex.get("expression") or "").strip() if isinstance(ex, dict) else str(ex).strip()
+        if word:
+            taught.add(word)
+
+    segments = segment_text(essay_text, vocab)
+    found = {}
+    order = []
+    for word, is_punct in segments:
+        if is_punct or not word.strip():
+            continue
+        if word in taught:
+            continue
+        info = vocab.get(word, {})
+        hsk = info.get("hsk", 0)
+        if hsk >= user_level and hsk > 0 and word not in found:
+            pos_codes = set(str(info.get("pos", "")).split(";"))
+            if pos_codes and pos_codes <= LOW_VALUE_POS:
+                continue
+            en_def = info.get("en_def", "")
+            if not en_def or en_def.lstrip().lower().startswith("used in"):
+                continue  # bound morpheme entries (e.g. 假 "used in 假装") carry no learning value
+            example = extract_example_sentence(essay_text, word)
+            found[word] = {
+                "word": word,
+                "pinyin": normalize_pinyin(info.get("pinyin", "")),
+                "hsk": hsk,
+                "pos": info.get("pos", ""),
+                "en_def": en_def,
+                "example": example,
+            }
+            order.append(word)
+
+    ranked = sorted(
+        found.values(),
+        key=lambda nw: (abs(nw["hsk"] - user_level), -len(nw["word"]), order.index(nw["word"])),
+    )
+    selected = ranked[:MAX_NEW_WORDS]
+    selected.sort(key=lambda nw: (nw["hsk"], order.index(nw["word"])))
+    return selected
+
+
+def generate_new_words_html(new_words, user_level):
+    """Render the New Words section HTML."""
+    try:
+        level_int = int(user_level)
+    except (TypeError, ValueError):
+        level_int = 6
+
+    if not new_words:
+        return '''<div class="nw-empty">No more high-value new words at HSK %d and above — the essential ones are covered in Key Words &amp; Sentences. Great job!</div>''' % level_int
+
+    cards = []
+    for nw in new_words:
+        color = HSK_COLORS.get(nw["hsk"], "#555")
+        label = HSK_LABELS.get(nw["hsk"], "")
+        bg = HSK_LIGHT_BG.get(nw["hsk"], "#f9f9f9")
+        pos_full = expand_pos(nw.get("pos", ""))
+        example = esc(nw.get("example", ""))
+        en_def = esc(nw.get("en_def", ""))
+        pos_html = f'<div class="ecard-meta">{esc(pos_full)}</div>' if pos_full else ""
+
+        cards.append(f'''
+    <div class="ecard" style="--c:{color};--bg:{bg};">
+      <div class="ecard-head">
+        <span class="ecard-text">{esc(nw["word"])}</span>
+        <span class="ecard-py">{esc(nw["pinyin"])}</span>
+        <span class="ecard-hsk" style="background:{color};">{label}</span>
+      </div>
+      {pos_html}
+      <div class="ecard-en">{en_def}</div>
+      <div class="ecard-ex"><span class="ecard-ex-label">Example:</span> {example}</div>
+    </div>''')
+    return "\n".join(cards)
+
+
+def build_paper_view(essay_text, title):
+    """Build the composition-paper view: one character per grid cell, KaiTi font.
+
+    Restores the real writing scenario (方格作文纸). The title takes the first
+    row starting at the 5th cell (标题空四格); each body paragraph starts with
+    two blank cells (首行空两格). Punctuation also occupies one cell.
+    """
+    paras = []
+    if title and title.strip():
+        title_cells = [f'<span class="gc">{esc(ch)}</span>' for ch in title if ch not in (" ", "\u3000")]
+        if title_cells:
+            indent = '<span class="gc blank"></span>' * 4
+            paras.append(f'<p class="gpara">{indent}{"".join(title_cells)}</p>')
+    for raw in essay_text.split("\n"):
+        raw = raw.strip()
+        if not raw:
+            continue
+        cells = []
+        for ch in raw:
+            if ch in (" ", "\u3000"):
+                continue
+            cells.append(f'<span class="gc">{esc(ch)}</span>')
+        if cells:
+            indent = '<span class="gc blank"></span><span class="gc blank"></span>'
+            paras.append(f'<p class="gpara">{indent}{"".join(cells)}</p>')
+    paras_html = "\n".join(paras)
+    return f'''
+  <div class="paper-body">
+{paras_html}
+  </div>'''
+
+
+def _strip_title_line(essay_text, title):
+    """Drop the title line from the body when the first non-empty line matches it."""
+    if not title or not title.strip():
+        return essay_text
+    lines = essay_text.split("\n")
+    for i, ln in enumerate(lines):
+        if not ln.strip():
+            continue
+        if ln.strip() == title.strip():
+            return "\n".join(lines[:i] + lines[i + 1:])
+        return essay_text
+    return essay_text
+
+
 def generate_html(essay_text, title, hsk_level, source_url, word_count, good_expressions, vocab):
     """Generate the complete HTML page."""
     # Build highlight set from good expressions
@@ -618,44 +492,31 @@ def generate_html(essay_text, title, hsk_level, source_url, word_count, good_exp
         if expr_text:
             highlight_words.add(expr_text)
 
-    # Segment and render essay
-    segments = segment_text(essay_text, vocab)
+    # The title renders on its own line (indented 4 chars), never as body text
+    body_text = _strip_title_line(essay_text, title)
 
-    # Split into paragraphs by newlines or double punctuation
-    paragraphs = []
-    current_para = []
-    for word, is_punct in segments:
-        if word == "\n" or (is_punct and word.strip() == ""):
-            if current_para:
-                paragraphs.append(current_para)
-                current_para = []
-        else:
-            current_para.append((word, is_punct))
-    if current_para:
-        paragraphs.append(current_para)
-
-    # If no paragraph breaks, try splitting by 。and！and？
-    if len(paragraphs) <= 1:
-        paragraphs = []
-        current_para = []
-        for word, is_punct in segments:
-            current_para.append((word, is_punct))
-            if is_punct and word.strip() in ("。", "！", "？", "!?", "..."):
-                paragraphs.append(current_para)
-                current_para = []
-        if current_para:
-            paragraphs.append(current_para)
+    # One paragraph per input line (每段首行空两格)
+    paragraph_texts = [ln.strip() for ln in body_text.split("\n") if ln.strip()]
 
     essay_html_parts = []
-    for para in paragraphs:
+    if title and title.strip():
+        essay_html_parts.append(f'<p class="essay-title-line">{esc(title)}</p>')
+    for para_text in paragraph_texts:
         parts = []
-        for word, is_punct in para:
+        for word, is_punct in segment_text(para_text, vocab):
             if is_punct:
                 parts.append(render_punctuation(word))
             else:
                 parts.append(render_word(word, vocab, highlight_words))
         essay_html_parts.append('<p class="para">' + "".join(parts) + '</p>')
     essay_html = "\n".join(essay_html_parts)
+
+    # Build composition-paper view (方格/横线作文纸, KaiTi font, 标题空四格+首行空两格)
+    paper_html = build_paper_view(body_text, title)
+
+    # Collect new words (curated, HSK level >= user's level) and render the section
+    new_words = collect_new_words(body_text, vocab, hsk_level, good_expressions)
+    new_words_html = generate_new_words_html(new_words, hsk_level)
 
     # Render good expression cards
     expr_cards = []
@@ -698,13 +559,15 @@ def generate_html(essay_text, title, hsk_level, source_url, word_count, good_exp
 
     title_esc = esc(title)
     source_esc = esc(source_url)
+    header_h1 = f"<h1>{title_esc}</h1>" if title_esc else ""
+    title_tag = esc(f"{title} - Essay Display") if title and title.strip() else "Essay Display"
 
     return f'''<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{title_esc} - Essay Display</title>
+<title>{title_tag}</title>
 <style>
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
   body {{
@@ -738,18 +601,19 @@ def generate_html(essay_text, title, hsk_level, source_url, word_count, good_exp
     background: white; border-radius: 20px; padding: 48px 40px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.12); margin-bottom: 32px;
   }}
-  .para {{ margin-bottom: 22px; text-align: justify; line-height: 1.5; }}
+  .para {{ margin-bottom: 20px; text-align: justify; line-height: 1.5; text-indent: 2em; }}
+  .essay-title-line {{ margin: 0 0 26px; text-indent: 4em; text-align: left; font-size: 22px; font-weight: 800; color: #1a1a2e; letter-spacing: 2px; line-height: 1.5; }}
   .w {{
     display: inline-flex; flex-direction: column; align-items: center;
-    vertical-align: top; margin: 0 1px 8px; padding: 4px 5px 3px;
-    border-radius: 7px; position: relative; transition: all 0.2s ease;
-    border-bottom: 3px solid var(--c, transparent); background: var(--bg, transparent);
+    vertical-align: top; margin: 0 0 7px; padding: 2px 2px 3px;
+    border-radius: 5px; position: relative; transition: all 0.2s ease;
+    border-bottom: 2px solid var(--c, transparent); background: var(--bg, transparent);
   }}
   .w:hover {{ transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 10; }}
   .py {{
-    font-size: 11px; font-weight: 500; color: var(--c, #999);
-    font-family: "Georgia", "Times New Roman", serif; line-height: 1.1;
-    margin-bottom: 2px; min-height: 13px; text-align: center;
+    font-size: 10px; font-weight: 500; color: var(--c, #999);
+    font-family: "Georgia", "Times New Roman", serif; line-height: 1.15;
+    margin-bottom: 2px; min-height: 11px; text-align: center;
   }}
   .cz {{ font-size: 20px; font-weight: 600; color: #1a1a2e; line-height: 1.3; text-align: center; }}
   .w.nohsk {{ border-bottom-color: transparent; background: transparent; }}
@@ -768,12 +632,47 @@ def generate_html(essay_text, title, hsk_level, source_url, word_count, good_exp
   }}
   .w.hl {{
     background: linear-gradient(135deg, #fff8e1, #fff3c4);
-    border-bottom-color: #ffc107; border-bottom-width: 4px;
+    border-bottom-color: #ffc107; border-bottom-width: 3px;
     box-shadow: 0 2px 8px rgba(255,193,7,0.2);
   }}
   .w.hl .cz {{ color: #e65100; }}
   .star {{ position: absolute; top: -8px; right: -4px; font-size: 13px; color: #ff9800; text-shadow: 0 1px 2px rgba(255,152,0,0.3); }}
-  .punct {{ font-size: 20px; color: #555; font-weight: 600; vertical-align: top; display: inline-block; margin: 0 1px; padding-top: 18px; }}
+  .punct {{ font-size: 20px; color: #555; font-weight: 600; vertical-align: top; display: inline-block; margin: 0; padding-top: 15px; }}
+  .view-bar {{ display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-bottom: 24px; }}
+  .view-btn {{
+    border: 2px solid rgba(255,255,255,0.7); background: rgba(255,255,255,0.15);
+    color: white; font-size: 14px; font-weight: 600; padding: 9px 20px;
+    border-radius: 22px; cursor: pointer; transition: all 0.2s ease;
+  }}
+  .view-btn:hover {{ background: rgba(255,255,255,0.32); }}
+  .view-btn.active {{ background: white; color: #5b4b8a; border-color: white; box-shadow: 0 4px 14px rgba(0,0,0,0.18); }}
+  .paper {{ background: white; border-radius: 20px; padding: 34px 30px 40px; box-shadow: 0 8px 32px rgba(0,0,0,0.12); margin-bottom: 32px; }}
+  .gc {{ font-family: "KaiTi", "楷体", "STKaiti", "Kaiti SC", "TW-Kai", serif; font-size: 26px; color: #1a1a2e; }}
+  .gpara {{ margin: 0; }}
+  .paper.grid .paper-body {{
+    border: 2px solid #d99a9f;
+    background-image:
+      linear-gradient(to right, #f2c6ca 1px, transparent 1px),
+      linear-gradient(to bottom, #f2c6ca 1px, transparent 1px);
+    background-size: 34px 34px;
+    padding: 0;
+  }}
+  .paper.grid .gpara {{ font-size: 0; line-height: 0; }}
+  .paper.grid .gc {{ display: inline-block; width: 34px; height: 34px; line-height: 34px; text-align: center; vertical-align: top; }}
+  .paper.grid .gc.blank {{ visibility: hidden; }}
+  .paper.lines .paper-body {{
+    border: 2px solid #b8c4d9;
+    background-image: linear-gradient(to bottom, #b8c4d9 1px, transparent 1px);
+    background-size: 100% 34px;
+    background-position: 0 31px;
+    padding: 0;
+  }}
+  .paper.lines .gpara {{ font-size: 0; line-height: 0; margin: 0; }}
+  .paper.lines .gc {{ font-size: 26px; display: inline-block; height: 34px; line-height: 34px; vertical-align: top; transform: translateY(var(--dy, 0px)); }}
+  .paper.lines .gc.blank {{ visibility: hidden; width: 26px; }}
+  .nw-note {{ font-size: 14px; color: #888; margin-bottom: 18px; }}
+  .nw-empty {{ font-size: 15px; color: #888; padding: 10px 0; }}
+  .ecard-meta {{ font-size: 13px; font-weight: 600; color: var(--c, #888); margin-bottom: 6px; text-transform: capitalize; }}
   .expr-sec {{ background: white; border-radius: 20px; padding: 40px; box-shadow: 0 8px 32px rgba(0,0,0,0.12); }}
   .expr-title {{ font-size: 24px; font-weight: 800; color: #1a1a2e; margin-bottom: 24px; padding-bottom: 14px; border-bottom: 3px solid #f0f2f5; }}
   .ecard {{ border-left: 5px solid var(--c, #ccc); background: var(--bg, #f9f9f9); border-radius: 10px; padding: 22px 26px; margin-bottom: 16px; transition: transform 0.2s, box-shadow 0.2s; }}
@@ -794,10 +693,11 @@ def generate_html(essay_text, title, hsk_level, source_url, word_count, good_exp
     .header {{ padding: 24px 16px; border-radius: 16px; }}
     .header h1 {{ font-size: 24px; }}
     .essay {{ padding: 24px 14px; border-radius: 16px; }}
-    .w {{ padding: 3px 3px 2px; margin: 0 0px 6px; }}
-    .py {{ font-size: 9px; min-height: 11px; }}
+    .w {{ padding: 2px 1px 2px; margin: 0 0 6px; }}
+    .py {{ font-size: 8.5px; min-height: 10px; }}
     .cz {{ font-size: 17px; }}
-    .punct {{ font-size: 17px; padding-top: 15px; }}
+    .punct {{ font-size: 17px; padding-top: 13px; }}
+    .essay-title-line {{ font-size: 19px; margin-bottom: 20px; }}
     .expr-sec {{ padding: 24px 16px; border-radius: 16px; }}
     .ecard {{ padding: 16px 18px; }}
     .ecard-text {{ font-size: 18px; }}
@@ -807,28 +707,86 @@ def generate_html(essay_text, title, hsk_level, source_url, word_count, good_exp
 <body>
 <div class="container">
   <div class="header">
-    <h1>{title_esc}</h1>
+    {header_h1}
     <div class="meta">
       <span class="badge badge-level">{level_label}</span>
       <span class="badge badge-count">约 {word_count} 字</span>
       <span class="badge badge-source"><a href="{source_esc}" target="_blank">📍 zuowen.com</a></span>
     </div>
   </div>
+  <div class="view-bar">
+    <button class="view-btn active" data-mode="reading" onclick="switchMode('reading')">📖 阅读模式</button>
+    <button class="view-btn" data-mode="grid" onclick="switchMode('grid')">⬛ 作文纸（方格）</button>
+    <button class="view-btn" data-mode="lines" onclick="switchMode('lines')">📏 作文纸（横线）</button>
+  </div>
+  <div id="reading-view">
   <div class="legend">
     {legend_items}
-    <span class="lg-item"><span class="lg-dot" style="background:#ffc107;"></span>★ Good Expression</span>
+    <span class="lg-item"><span class="lg-dot" style="background:#ffc107;"></span>★ Key Expression</span>
   </div>
   <div class="essay">
 {essay_html}
   </div>
+  </div>
+  <div id="paper-view" class="paper grid" style="display:none;">
+{paper_html}
+  </div>
   <div class="expr-sec">
-    <div class="expr-title">★ Useful Expressions &amp; Key Sentences</div>
+    <div class="expr-title">★ 重点词句 | Key Words &amp; Sentences</div>
 {expr_html}
+  </div>
+  <div class="expr-sec">
+    <div class="expr-title">📚 生词表 | New Words ({level_label} &amp; above)</div>
+    <div class="nw-note">生词表为精选：从你所选等级及以上的词汇中挑选最值得学习的若干个（纯功能词与重点词句已讲解的不再重复），例句均取自本篇原文。 (A curated selection of high-value new words at your HSK level and above; pure function words and expressions already taught are not repeated. All examples are from this essay.)</div>
+{new_words_html}
   </div>
   <div class="footer">
     Generated by Chinese Writing Tutor · Source: <a href="{source_esc}" target="_blank">zuowen.com</a>
   </div>
 </div>
+<script>
+function switchMode(mode) {{
+  var btns = document.querySelectorAll('.view-btn');
+  for (var i = 0; i < btns.length; i++) {{
+    btns[i].classList.toggle('active', btns[i].getAttribute('data-mode') === mode);
+  }}
+  document.getElementById('reading-view').style.display = (mode === 'reading') ? '' : 'none';
+  var pv = document.getElementById('paper-view');
+  pv.style.display = (mode === 'reading') ? 'none' : '';
+  pv.className = (mode === 'grid') ? 'paper grid' : 'paper lines';
+}}
+(function() {{
+  var HIGH = {{"\u201c":1, "\u201d":1, "\u2018":1, "\u2019":1, '"':1, "'":1, "\uff02":1, "\uff07":1, "\u2014":1, "\uff5e":1, "\u301c":1, "\u00b7":1, "-":1, "~":1, "\u00d7":1, "\u00f7":1}};
+  try {{
+    var paper = document.querySelector('.paper');
+    if (!paper) return;
+    var gcs = paper.querySelectorAll('.gc');
+    var cv = document.createElement('canvas');
+    var ctx = cv.getContext('2d');
+    ctx.font = '26px "KaiTi", "楷体", "STKaiti", "Kaiti SC", "TW-Kai", serif';
+    var probe = ctx.measureText('游');
+    if (!probe || probe.fontBoundingBoxAscent === undefined) return;
+    var hl = (34 - probe.fontBoundingBoxAscent - probe.fontBoundingBoxDescent) / 2;
+    var base = hl + probe.fontBoundingBoxAscent;
+    var cap = (31 - 1 - base - probe.actualBoundingBoxDescent) + 4;
+    var cache = {{}};
+    for (var i = 0; i < gcs.length; i++) {{
+      var s = gcs[i];
+      if (s.className.indexOf('blank') >= 0) continue;
+      var ch = s.textContent;
+      if (!ch || ch.length !== 1) continue;
+      if (HIGH[ch]) continue;
+      var d = cache[ch];
+      if (d === undefined) d = cache[ch] = ctx.measureText(ch).actualBoundingBoxDescent;
+      var t = 31 - 1 - base - d;
+      if (d < 2) t -= 3;
+      if (t > cap) t = cap;
+      if (t < -3) t = -3;
+      s.style.setProperty('--dy', (Math.round(t * 10) / 10) + 'px');
+    }}
+  }} catch (e) {{}}
+}})();
+</script>
 </body>
 </html>'''
 
@@ -840,7 +798,7 @@ def main():
     parser.add_argument("--expressions-json", help="JSON file with good expressions array")
     parser.add_argument("--output", default="/mnt/user-data/outputs/essay_display.html")
     parser.add_argument("--hsk-level", default="6", help="HSK level for header display")
-    parser.add_argument("--title", default="Essay", help="Essay title")
+    parser.add_argument("--title", default="", help="Essay title")
     parser.add_argument("--source-url", default="", help="Source URL")
     parser.add_argument("--word-count", default="0", help="Word count")
     parser.add_argument("--vocab-dir", default="", help="Directory with HSK CSV files")
