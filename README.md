@@ -61,6 +61,8 @@
 
 完整产品技术文档（34 页，含需求分析、框架设计、测试用例、使用说明）：[docs/product-doc.pdf](docs/product-doc.pdf)
 
+> 💬 **有问题、有想法、有教学案例？欢迎在 [Discussions 讨论区](https://github.com/jw-wuzhen/hsk-tcsl-skills/discussions) 留言交流！**
+
 ---
 
 ## 背景与痛点
