@@ -816,6 +816,23 @@ def _related_words_for_issue(item, sentences, hsk_words, target_level="HSK3"):
     return [w["word"] for w in new_words][:12]
 
 
+# 错因英文解释（供 HTML 报告半隐藏展示，帮助母语非中文的学习者理解）
+ATTRIBUTION_EN = {
+    "量词缺失": "The learner omitted a measure word. Many languages do not use classifiers, so learners tend to drop them before nouns.",
+    "量词误用": "The learner used the generic measure word “个” instead of the correct specific classifier, or chose the wrong one under the influence of their native language.",
+    "搭配错误": "The adverb-verb combination follows English expression habits, creating an unnatural Chinese collocation.",
+    "虚词误用": "The learner is not yet accurate with Chinese function words (structural particles 的/地/得, modal particles 了/吗/呢, etc.), and needs to study their functions in different sentence patterns.",
+    "用词错误": "The word or conjunction choice is imprecise, showing that the lexical network and Chinese collocation habits are still being built.",
+    "句式冗余": "The sentence contains redundant or repeated elements (e.g. an unnecessary 是, or a hypothetical conjunction combined with 的时候). Simplify the expression.",
+    "冗余重复": "Some characters or words are repeated in the writing; the learner should self-check after drafting.",
+    "语序问题": "The word order is influenced by the learner's native language (e.g. the position of adverbials or 就). More training on Chinese word-order rules is needed.",
+    "语义协调": "The word combination is not semantically consistent; the learner should choose collocations that fit the context.",
+    "篇章衔接": "The use of conjunctions is incomplete or mechanical; the learner needs more practice on complex sentences and discourse cohesion.",
+    "逻辑问题": "The logical relationship between sentences is unclear; the learner needs to clarify cause-effect, contrast and other relations.",
+    "无明显错误": "No obvious errors were found; the learner can continue to improve naturalness and discourse organization.",
+}
+
+
 def build_attribution_report(issues, hsk_words, text, target_level="HSK3"):
     grammar_map = load_grammar_knowledge()
     sentences = split_sentences(text)
@@ -848,6 +865,7 @@ def build_attribution_report(issues, hsk_words, text, target_level="HSK3"):
             "knowledge_points": knowledge,
             "source": "https://www.chinesetest.cn/syllabus",
             "attribution": attribution,
+            "attribution_en": ATTRIBUTION_EN.get(itype, ""),
             "suggestion": item["suggestion"],
             "related_hsk_words": _related_words_for_issue(item, sentences, hsk_words, target_level),
             "related_grammar_points": knowledge,

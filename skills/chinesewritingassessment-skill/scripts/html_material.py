@@ -69,13 +69,31 @@ def _tokenize(text, words):
     return tokens
 
 
+def _char_cell(char, pinyin, title, level, color):
+    """生成田字格单字单元：拼音固定在字上方，汉字居中在田字格内，逐字严格对齐。"""
+    py_html = f'<span class="py">{html.escape(pinyin)}</span>' if pinyin else '<span class="py">&nbsp;</span>'
+    return (
+        f'<span class="char-cell level-{level}" style="--level-color:{color}" '
+        f'title="{html.escape(title, quote=True)}">{py_html}'
+        f'<span class="box"><span class="char">{html.escape(char)}</span></span></span>'
+    )
+
+
+def _is_punct(char):
+    """标点/空白字符不套田字格，保持自然排版。"""
+    return bool(re.match(r"[\u3000-\u303f\uff00-\uffef\s，。！？；：、""''（）【】《》〈〉…—·～]", char))
+
+
 def _annotated_text(text, words):
-    """逐字标注拼音：每个字的拼音精确对应在字上方。"""
+    """逐字标注拼音：每个汉字放入田字格单元，拼音固定在格子上方，全文对齐成网格。"""
     word_map = {w["word"]: w for w in words}
     parts = []
     for token_type, value in _tokenize(text, words):
         if token_type == "char":
-            parts.append(html.escape(value))
+            if _is_punct(value):
+                parts.append(f'<span class="punct">{html.escape(value)}</span>')
+            else:
+                parts.append(f'<span class="char-cell"><span class="box"><span class="char">{html.escape(value)}</span></span></span>')
             continue
         item = word_map[value]
         level = _clean_level(item.get("level"))
@@ -85,22 +103,14 @@ def _annotated_text(text, words):
         title = f"HSK{level} | {en_def}"
         pinyin_parts = pinyin.split() if pinyin else []
         if len(pinyin_parts) == len(value) and len(value) > 1:
-            ruby_chars = []
+            # 多字词：逐字拼音一一对应
             for i, char in enumerate(value):
-                ruby_chars.append(
-                    f'<ruby class="word-char" title="{html.escape(title, quote=True)}">'
-                    f'{html.escape(char)}<rt>{html.escape(pinyin_parts[i])}</rt></ruby>'
-                )
-            parts.append(
-                f'<span class="word-group level-{level}" style="--level-color:{color}">'
-                + ''.join(ruby_chars) + '</span>'
-            )
+                parts.append(_char_cell(char, pinyin_parts[i], title, level, color))
         else:
-            parts.append(
-                f'<ruby class="word level-{level}" style="--level-color:{color}" '
-                f'title="{html.escape(title, quote=True)}">{html.escape(value)}'
-                f'<rt>{html.escape(pinyin)}</rt></ruby>'
-            )
+            # 单字词或音节数不一致：整串拼音标在首字上方，其余字无拼音
+            for i, char in enumerate(value):
+                py = pinyin_parts[i] if i < len(pinyin_parts) else ""
+                parts.append(_char_cell(char, py if i == 0 else (pinyin_parts[i] if i < len(pinyin_parts) else ""), title, level, color))
     return "".join(parts)
 
 
@@ -128,8 +138,13 @@ def _error_type_color(error_type):
 
 
 def _bilingual(zh, en):
-    """生成中英双语标题。"""
-    return f'{zh} <span class="en-sub">{en}</span>'
+    """生成中英双语标题：英文默认半隐藏，点击 EN 徽章展开。"""
+    return f'{zh} <button class="en-toggle" type="button" aria-label="Show English">EN</button> <span class="en-sub" hidden>{en}</span>'
+
+
+def _bilingual_sub(zh, en):
+    """面板副标题：中文 + 半隐藏英文。"""
+    return f'{zh} <button class="en-toggle" type="button">EN</button> <span class="en-sub" hidden>{en}</span>'
 
 
 def _build_error_panel(issues):
@@ -143,7 +158,7 @@ def _build_error_panel(issues):
           <div class="panel-header">
             <span class="panel-icon">🔍</span>
             <div><h2>{_bilingual("一、语法/语义错误定位", "Grammar & Semantic Error Detection")}</h2>
-            <p class="panel-sub">识别作文中的语病、搭配错误、用词错误、逻辑问题 / Identify grammar, collocation, word choice and logic issues</p></div>
+            <p class="panel-sub">{_bilingual_sub("识别作文中的语病、搭配错误、用词错误、逻辑问题", "Identify grammar, collocation, word choice and logic issues")}</p></div>
           </div>
           <div class="empty-state">
             <div class="empty-icon">✓</div>
@@ -190,7 +205,7 @@ def _build_error_panel(issues):
       <div class="panel-header">
         <span class="panel-icon">🔍</span>
         <div><h2>{_bilingual("一、语法/语义错误定位", "Grammar & Semantic Error Detection")}</h2>
-        <p class="panel-sub">识别作文中的语病、搭配错误、用词错误、逻辑问题 / Identify grammar, collocation, word choice and logic issues</p></div>
+        <p class="panel-sub">{_bilingual_sub("识别作文中的语病、搭配错误、用词错误、逻辑问题", "Identify grammar, collocation, word choice and logic issues")}</p></div>
       </div>
       <div class="error-stats">
         <div class="stat-item"><span class="stat-num">{len(real_issues)}</span><span class="stat-label">问题总数<br><small>Total</small></span></div>
@@ -201,7 +216,7 @@ def _build_error_panel(issues):
     </section>'''
 
 
-def _build_attribution_panel(attribution_report, reference_sources):
+def _build_attribution_panel(attribution_report):
     if not attribution_report:
         return ''
     real_attrs = [a for a in attribution_report if a.get("type") != "无明显错误"]
@@ -211,7 +226,7 @@ def _build_attribution_panel(attribution_report, reference_sources):
           <div class="panel-header">
             <span class="panel-icon">🧩</span>
             <div><h2>{_bilingual("二、错题归因报告", "Error Attribution Report")}</h2>
-            <p class="panel-sub">基于错误定位，输出错因分析，关联权威国际中文教学资料中的汉语知识点 / Analyze error causes and link to Chinese grammar knowledge points</p></div>
+            <p class="panel-sub">{_bilingual_sub("基于错误定位，输出错因分析，关联权威国际中文教学资料中的汉语知识点", "Analyze error causes and link to Chinese grammar knowledge points")}</p></div>
           </div>
           <div class="empty-state"><p>无需要归因的错误。<br><small class="en-sub">No errors to attribute.</small></p></div>
         </section>'''
@@ -240,7 +255,10 @@ def _build_attribution_panel(attribution_report, reference_sources):
             </div>
             <div class="attr-row">
               <span class="row-label">错因分析<br><small>Cause</small></span>
-              <span class="attr-text">{html.escape(attr.get("attribution", ""))}</span>
+              <div class="attr-cause">
+                <span class="attr-text">{html.escape(attr.get("attribution", ""))}</span>
+                {f'<button class="en-toggle" type="button">EN 解释</button><span class="en-sub attr-en" hidden>{html.escape(attr.get("attribution_en", ""))}</span>' if attr.get("attribution_en") else ''}
+              </div>
             </div>
             <div class="attr-row">
               <span class="row-label">关联知识点<br><small>Knowledge Points</small></span>
@@ -255,40 +273,46 @@ def _build_attribution_panel(attribution_report, reference_sources):
         </article>''')
 
     ref_html = ""
-    if reference_sources:
-        if isinstance(reference_sources, dict):
-            sources = reference_sources.get("sources", []) or reference_sources.get("references", [])
-        elif isinstance(reference_sources, list):
-            sources = reference_sources
-        else:
-            sources = []
-        if sources:
-            ref_items = []
-            for s in sources:
-                if isinstance(s, dict):
-                    name = s.get("name", s.get("title", ""))
-                    url = s.get("url", s.get("link", ""))
-                    desc = s.get("description", s.get("desc", ""))
-                    if url:
-                        ref_items.append(f'<li><a href="{html.escape(url)}" target="_blank">{html.escape(name)}</a> — {html.escape(desc)}</li>')
-                    else:
-                        ref_items.append(f'<li>{html.escape(name)} — {html.escape(desc)}</li>')
-            if ref_items:
-                ref_html = f'''
-                <div class="reference-box">
-                  <h4>📚 权威参考来源 <small class="en-sub">Authoritative References</small></h4>
-                  <ul>{''.join(ref_items)}</ul>
-                </div>'''
-
     return f'''
     <section class="panel core-panel" id="attribution">
       <div class="panel-header">
         <span class="panel-icon">🧩</span>
         <div><h2>{_bilingual("二、错题归因报告", "Error Attribution Report")}</h2>
-        <p class="panel-sub">基于错误定位，输出错因分析，关联权威国际中文教学资料中的汉语知识点 / Analyze error causes and link to Chinese grammar knowledge points</p></div>
+        <p class="panel-sub">{_bilingual_sub("基于错误定位，输出错因分析，关联权威国际中文教学资料中的汉语知识点", "Analyze error causes and link to Chinese grammar knowledge points")}</p></div>
       </div>
       <div class="attr-list">{''.join(cards)}</div>
-      {ref_html}
+    </section>'''
+
+
+def _build_reference_panel(reference_sources):
+    """权威参考来源面板：独立成段，置于报告最底部。"""
+    if not reference_sources:
+        return ''
+    if isinstance(reference_sources, dict):
+        sources = reference_sources.get("sources", []) or reference_sources.get("references", [])
+    elif isinstance(reference_sources, list):
+        sources = reference_sources
+    else:
+        sources = []
+    if not sources:
+        return ''
+    ref_items = []
+    for s in sources:
+        if isinstance(s, dict):
+            name = s.get("name", s.get("title", ""))
+            url = s.get("url", s.get("link", ""))
+            desc = s.get("description", s.get("desc", ""))
+            if url:
+                ref_items.append(f'<li><a href="{html.escape(url)}" target="_blank">{html.escape(name)}</a> — {html.escape(desc)}</li>')
+            else:
+                ref_items.append(f'<li>{html.escape(name)} — {html.escape(desc)}</li>')
+    if not ref_items:
+        return ''
+    return f'''
+    <section class="panel" id="references" style="margin-top:24px">
+      <h2>📚 权威参考来源 <span class="en-sub">Authoritative References</span></h2>
+      <p class="panel-sub">{_bilingual_sub("评分量表与教学依据来自以下权威研究与国际中文教学标准", "Assessment scales and teaching standards are based on the following authoritative references")}</p>
+      <ul class="reference-list">{''.join(ref_items)}</ul>
     </section>'''
 
 
@@ -299,22 +323,39 @@ def _build_evaluation_panel(evaluation, issues):
     dimensions = evaluation.get("evaluation_dimensions", {})
     suggestions = evaluation.get("global_suggestions", [])
 
+    DIMENSION_ICONS = {"language_accuracy": "🎯", "language_richness": "💬", "discourse_rationality": "📐", "writing_normalization": "✍️"}
     dim_bars = []
     for key, label_zh in DIMENSION_LABELS.items():
         dim = dimensions.get(key, {})
         dim_score = dim.get("score", 0)          # 1-4 级（论文量表）
         dim_percent = dim.get("percent", 0)      # 百分制换算
+        if not dim_percent:
+            dim_percent = round(dim_score / 4 * 100)
         dim_level_label = dim.get("level_label", "一般")
         dim_desc = dim.get("level_description", "")
         dim_note = dim.get("note", "")
         label_en = DIMENSION_LABELS_EN.get(key, key)
+        icon = DIMENSION_ICONS.get(key, "📊")
         bar_color = "#27ae60" if dim_score >= 4 else ("#f39c12" if dim_score >= 3 else ("#e67e22" if dim_score == 2 else "#e74c3c"))
+        ticks = "".join(
+            f'<i class="dim-tick{" on" if dim_score >= lv else ""}" style="left:{((lv - 1) / 3) * 100:.1f}%"></i>'
+            for lv in range(1, 5)
+        )
         dim_bars.append(f'''
-        <div class="dim-row">
-          <div class="dim-label">{html.escape(label_zh)}<br><small class="en-sub">{html.escape(label_en)}</small></div>
-          <div class="dim-bar-wrap"><div class="dim-bar" style="width:{dim_percent}%;background:{bar_color}"></div></div>
-          <div class="dim-score">{dim_score}/4<small class="en-sub"> {html.escape(dim_level_label)}</small></div>
-          <div class="dim-note">{html.escape(dim_desc)}<br><small>{html.escape(dim_note)}</small></div>
+        <div class="dim-card" style="--dim-color:{bar_color}">
+          <div class="dim-head">
+            <span class="dim-icon">{icon}</span>
+            <span class="dim-name">{html.escape(label_zh)} <small>{html.escape(label_en)}</small></span>
+            <span class="dim-badge">{dim_score}/4 <small>{html.escape(dim_level_label)}</small></span>
+          </div>
+          <div class="dim-track">
+            <span class="dim-fill" style="width:{dim_percent}%"></span>
+            {ticks}
+          </div>
+          <div class="dim-foot">
+            <span class="dim-desc">{html.escape(dim_desc)}</span>
+            {f'<span class="dim-note">{html.escape(dim_note)}</span>' if dim_note else ''}
+          </div>
         </div>''')
 
     real_issues = [i for i in issues if i.get("type") != "无明显错误"]
@@ -341,7 +382,7 @@ def _build_evaluation_panel(evaluation, issues):
       <div class="panel-header">
         <span class="panel-icon">📊</span>
         <div><h2>{_bilingual("三、全文评价", "Overall Evaluation")}</h2>
-        <p class="panel-sub">提供整体评分、篇章逻辑评价及全局性写作提升建议 / Overall score, discourse logic evaluation and global writing improvement suggestions</p></div>
+        <p class="panel-sub">{_bilingual_sub("提供整体评分、篇章逻辑评价及全局性写作提升建议", "Overall score, discourse logic evaluation and global writing improvement suggestions")}</p></div>
       </div>
       <div class="eval-overview">
         <div class="eval-score-box">
@@ -420,8 +461,9 @@ def build_html_material(text, words, issues, evaluation, attribution_report=None
     char_count = len(text.strip())
 
     error_panel = _build_error_panel(issues)
-    attribution_panel = _build_attribution_panel(attribution_report or [], reference_sources)
+    attribution_panel = _build_attribution_panel(attribution_report or [])
     evaluation_panel = _build_evaluation_panel(evaluation, issues)
+    reference_panel = _build_reference_panel(reference_sources)
 
     return f'''<!doctype html>
 <html lang="zh-CN">
@@ -434,6 +476,10 @@ def build_html_material(text, words, issues, evaluation, attribution_report=None
 * {{ box-sizing:border-box; }}
 body {{ margin:0; color:var(--ink); background:#edf3f1; font-family:"Noto Serif SC","Microsoft YaHei",Georgia,serif; line-height:1.8; }}
 .en-sub {{ color:var(--muted); font-size:0.7em; font-weight:normal; font-family:Arial,sans-serif; }}
+/* 半隐藏英文：默认隐藏，点击 EN 徽章展开 */
+.en-toggle {{ border:1px solid #b9c7cd; background:#f0f4f5; color:#176b87; border-radius:4px; padding:0 7px; font:11px Arial,sans-serif; cursor:pointer; vertical-align:2px; line-height:1.6; }}
+.en-toggle:hover {{ background:#ddecf0; }}
+.en-toggle.active {{ background:#176b87; color:white; border-color:#176b87; }}
 .toolbar {{ position:sticky; top:0; z-index:10; display:flex; justify-content:flex-end; gap:10px; padding:14px max(20px,calc((100% - 1080px)/2)); background:#18323a; }}
 button {{ border:1px solid #8bb5b5; border-radius:8px; padding:8px 14px; color:white; background:transparent; cursor:pointer; font-size:14px; }}
 button.primary {{ background:#e89a56; border-color:#e89a56; }}
@@ -442,6 +488,9 @@ button.primary {{ background:#e89a56; border-color:#e89a56; }}
 .kicker {{ letter-spacing:.16em; text-transform:uppercase; color:#b9e2d8; font-size:12px; }}
 h1 {{ margin:5px 0 10px; font-size:clamp(28px,5vw,42px); line-height:1.2; }}
 h1 .en-sub {{ color:#b9e2d8; font-size:0.45em; }}
+h1 .hero-toggle {{ font-size:0.3em; vertical-align:0.45em; padding:0 0.7em; background:transparent; border-color:#8bb5b5; color:#b9e2d8; }}
+h1 .hero-toggle:hover {{ background:#287c84; }}
+h1 .hero-toggle.active {{ background:#e89a56; border-color:#e89a56; color:#fff; }}
 .hero p {{ max-width:720px; margin:0; color:#e0f1ec; }}
 .hero-stats {{ display:flex; gap:28px; margin-top:22px; flex-wrap:wrap; }}
 .hero-stat {{ display:flex; flex-direction:column; }}
@@ -492,15 +541,17 @@ h4 {{ margin:0 0 10px; color:var(--accent); font-size:16px; }}
 .attr-row {{ display:flex; gap:12px; margin-bottom:10px; align-items:flex-start; }}
 .attr-row:last-child {{ margin-bottom:0; }}
 .attr-text {{ color:#555; }}
+.attr-cause {{ flex:1; min-width:0; }}
+.attr-cause .en-toggle {{ margin-top:4px; }}
+.attr-en {{ display:block; margin-top:6px; padding:8px 10px; background:#f7fafb; border-left:3px solid #b9c7cd; border-radius:4px; font-size:13px; line-height:1.7; color:#445; }}
 .tag-group {{ display:flex; flex-wrap:wrap; gap:6px; }}
 .kp-tag {{ padding:2px 10px; border-radius:12px; background:#e8f4fd; color:#2980b9; font-size:12px; }}
 .rw-tag {{ padding:2px 8px; border-radius:4px; background:#f0e3ff; color:#8e44ad; font-size:12px; }}
 .tag-empty {{ color:var(--muted); font-size:13px; }}
-.reference-box {{ margin-top:20px; padding:16px; background:#f0f7f4; border-radius:10px; border-left:4px solid #27ae60; }}
-.reference-box h4 {{ color:#1e8449; }}
-.reference-box ul {{ margin:8px 0 0; padding-left:20px; }}
-.reference-box li {{ margin-bottom:4px; font-size:14px; }}
-.reference-box a {{ color:#2980b9; }}
+.reference-list {{ margin:10px 0 0; padding-left:0; list-style:none; }}
+.reference-list li {{ margin-bottom:10px; padding:12px 16px; background:#f0f7f4; border-left:4px solid #27ae60; border-radius:8px; font-size:14px; }}
+.reference-list a {{ color:#2980b9; font-weight:bold; text-decoration:none; }}
+.reference-list a:hover {{ text-decoration:underline; }}
 .eval-overview {{ display:grid; grid-template-columns:200px 1fr; gap:24px; margin-bottom:24px; }}
 .eval-score-box {{ text-align:center; padding:24px; background:linear-gradient(135deg,#174c58,#287c84); border-radius:14px; color:white; }}
 .eval-score {{ font-size:56px; font-weight:bold; line-height:1; color:#ffd89b; }}
@@ -509,13 +560,19 @@ h4 {{ margin:0 0 10px; color:var(--accent); font-size:16px; }}
 .eval-logic {{ padding:18px; background:#f8f9fa; border-radius:10px; }}
 .eval-logic p {{ margin:0; color:#555; }}
 .eval-dimensions {{ margin-bottom:24px; }}
-.dim-row {{ display:grid; grid-template-columns:160px 1fr 40px; gap:10px; align-items:center; margin-bottom:10px; }}
-.dim-label {{ font-size:14px; color:var(--ink); }}
-.dim-label small {{ display:block; font-size:11px; color:var(--muted); }}
-.dim-bar-wrap {{ height:20px; background:#e9ecef; border-radius:10px; overflow:hidden; }}
-.dim-bar {{ height:100%; border-radius:10px; transition:width .3s; }}
-.dim-score {{ text-align:right; font-weight:bold; font-size:14px; }}
-.dim-note {{ grid-column:1 / -1; font-size:12px; color:var(--muted); margin-top:-4px; padding-left:170px; }}
+.dim-card {{ padding:16px 18px; border-radius:12px; background:#fff; border:1px solid var(--line); box-shadow:0 3px 12px #294c4610; margin-bottom:12px; }}
+.dim-head {{ display:flex; align-items:center; gap:10px; margin-bottom:12px; }}
+.dim-icon {{ font-size:22px; }}
+.dim-name {{ font-size:16px; font-weight:bold; color:var(--ink); line-height:1.2; }}
+.dim-name small {{ display:block; font-size:11px; color:var(--muted); font-weight:normal; }}
+.dim-badge {{ margin-left:auto; flex-shrink:0; padding:4px 14px; border-radius:20px; background:var(--dim-color); color:white; font-size:15px; font-weight:bold; text-align:center; line-height:1.15; }}
+.dim-badge small {{ display:block; font-size:10px; font-weight:normal; opacity:0.92; }}
+.dim-track {{ position:relative; height:10px; border-radius:6px; background:#eef1f3; }}
+.dim-fill {{ position:absolute; left:0; top:0; bottom:0; border-radius:6px; background:linear-gradient(90deg, color-mix(in srgb, var(--dim-color) 45%, #fff), var(--dim-color)); }}
+.dim-tick {{ position:absolute; top:-3px; width:16px; height:16px; border-radius:50%; background:#fff; border:2px solid #c8d0d5; transform:translateX(-50%); box-sizing:border-box; }}
+.dim-tick.on {{ background:var(--dim-color); border-color:var(--dim-color); }}
+.dim-foot {{ display:flex; flex-wrap:wrap; gap:4px 16px; margin-top:10px; font-size:13px; color:var(--muted); }}
+.dim-desc {{ color:#444; }}
 .eval-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:24px; }}
 .eval-col {{ padding:16px; background:#f8f9fa; border-radius:10px; }}
 .eval-col ul {{ margin:0; padding-left:18px; }}
@@ -524,14 +581,18 @@ h4 {{ margin:0 0 10px; color:var(--accent); font-size:16px; }}
 .eval-suggestions h4 {{ color:#d68910; }}
 .eval-suggestions ol {{ margin:8px 0 0; padding-left:20px; }}
 .eval-suggestions li {{ margin-bottom:6px; }}
-.original {{ padding:25px; min-height:180px; font-size:22px; line-height:2.35; background:#fff; border-left:5px solid var(--warm); border-radius:4px 12px 12px 4px; }}
-/* 逐字拼音标注：word-group 包裹，word-char 单字 */
-.word-group {{ display:inline-flex; padding:0 3px; margin:0 1px; border-radius:4px; background:var(--level-color); cursor:help; vertical-align:baseline; }}
-ruby.word-char {{ display:inline-block; margin:0; padding:0; background:transparent; }}
-ruby.word-char rt {{ color:#55717a; font-family:Arial,sans-serif; font-size:10px; line-height:1; }}
-/* 整体标注（单字词或音节数不一致） */
-ruby.word {{ display:inline-block; padding:0 3px; margin:0 1px; border-radius:4px; background:var(--level-color); cursor:help; }}
-ruby rt {{ color:#55717a; font-family:Arial,sans-serif; font-size:10px; line-height:1; }}
+.original {{ padding:25px; min-height:180px; font-size:22px; line-height:2.4; background:#fff; border-left:5px solid var(--warm); border-radius:4px 12px 12px 4px; letter-spacing:0; }}
+/* 田字格逐字对齐：拼音固定在上、汉字居中在格内，全文字格网格严格对齐 */
+.char-cell {{ display:inline-flex; flex-direction:column; align-items:center; width:1.55em; margin:0 1px; vertical-align:top; }}
+.char-cell .py {{ display:block; height:1.1em; line-height:1.1; font:10px/1.1 Arial,sans-serif; color:#55717a; text-align:center; white-space:nowrap; overflow:hidden; }}
+.char-cell .box {{ position:relative; display:flex; align-items:center; justify-content:center; width:1.42em; height:1.42em; border:1px solid #d8d2c8; border-radius:3px; background:var(--level-color,#fff); }}
+.char-cell .box::before, .char-cell .box::after {{ content:""; position:absolute; background:#e6e0d6; pointer-events:none; }}
+.char-cell .box::before {{ left:0; right:0; top:50%; height:1px; }}
+.char-cell .box::after {{ top:0; bottom:0; left:50%; width:1px; }}
+.char-cell .box .char {{ position:relative; z-index:1; font-size:0.92em; line-height:1; }}
+.original .char-cell {{ margin-top:0.35em; }}
+/* 标点：置于字格中线附近，与汉字网格对齐 */
+.original .punct {{ display:inline-block; vertical-align:top; margin-top:1.42em; line-height:1; color:var(--ink); }}
 .legend {{ display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }}
 .level-dot {{ display:inline-block; padding:1px 7px; border-radius:12px; font:12px Arial,sans-serif; background:var(--level-color); }}
 .glossary {{ display:grid; gap:10px; }}
@@ -548,21 +609,19 @@ ruby rt {{ color:#55717a; font-family:Arial,sans-serif; font-size:10px; line-hei
 .empty-icon {{ display:inline-flex; align-items:center; justify-content:center; width:60px; height:60px; border-radius:50%; background:#d4edda; color:#27ae60; font-size:28px; margin-bottom:12px; }}
 .empty-state h3 {{ margin:0 0 8px; color:#27ae60; }}
 .empty-state p {{ margin:0; color:var(--muted); }}
-.toc {{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:24px; padding:14px 18px; background:#fff; border-radius:10px; border:1px solid var(--line); }}
-.toc a {{ padding:6px 14px; border-radius:6px; background:#f0f4f5; color:var(--accent); text-decoration:none; font-size:14px; }}
+.toc {{ display:grid; grid-template-columns:repeat(6, 1fr); gap:10px; margin-bottom:24px; padding:14px 18px; background:#fff; border-radius:10px; border:1px solid var(--line); }}
+.toc a {{ padding:8px 6px; border-radius:6px; background:#f0f4f5; color:var(--accent); text-decoration:none; font-size:13px; text-align:center; white-space:nowrap; }}
 .toc a:hover {{ background:var(--accent); color:white; }}
 ul, ol {{ padding-left:22px; }}
 footer {{ margin-top:28px; color:var(--muted); font-size:13px; text-align:center; }}
 @media(max-width:760px) {{
-  .grid {{ grid-template-columns:1fr; }}
+  .toc {{ grid-template-columns:repeat(2, 1fr); }}
   .hero {{ padding:30px 24px; }}
   .panel {{ padding:21px; }}
   .original {{ font-size:19px; }}
   .glossary-item {{ grid-template-columns:48px 60px 80px 1fr; font-size:13px; }}
   .eval-overview {{ grid-template-columns:1fr; }}
   .eval-grid {{ grid-template-columns:1fr; }}
-  .dim-row {{ grid-template-columns:120px 1fr 36px; }}
-  .dim-note {{ padding-left:0; }}
   .error-stats {{ flex-direction:column; }}
   .row-label {{ width:70px; }}
 }}
@@ -583,9 +642,7 @@ footer {{ margin-top:28px; color:var(--muted); font-size:13px; text-align:center
 <main class="page">
 <header class="hero">
   <div class="kicker">Chinese Writing Assessment · 中文写作评估</div>
-  <h1>{html.escape(title)} <span class="en-sub">{html.escape(title_en)}</span></h1>
-  <p>基于国际中文教学标准与 HSK 词汇体系，对作文进行语法/语义错误定位、错题归因分析和全文能力评价。<br>
-  <span class="en-sub">Grammar/semantic error detection, error attribution, and overall writing evaluation based on International Chinese Teaching Standards and HSK vocabulary.</span></p>
+  <h1>{html.escape(title)} <button class="en-toggle hero-toggle" type="button" aria-label="Show English title">EN</button> <span class="en-sub" hidden>{html.escape(title_en)}</span></h1>
   <div class="hero-stats">
     <div class="hero-stat"><span class="num">{score}</span><span class="label">总体评分 / Score</span></div>
     <div class="hero-stat"><span class="num">{issue_count}</span><span class="label">检测问题 / Issues</span></div>
@@ -608,21 +665,23 @@ footer {{ margin-top:28px; color:var(--muted); font-size:13px; text-align:center
 {evaluation_panel}
 
 <section class="panel" id="reading" style="margin-top:24px">
-  <h2>📖 原文精读 <span class="en-sub">Close Reading with Pinyin</span></h2>
+  <h2>📖 {_bilingual("原文精读", "Close Reading with Pinyin")}</h2>
   <div class="original">{_annotated_text(text, words)}</div>
   <div class="legend">{''.join(f'<span class="level-dot level-{level}" style="--level-color:{LEVEL_COLORS.get(level, "#f0f0f0")}">HSK{level}</span>' for level in sorted(grouped))}</div>
 </section>
 
 <section class="panel" id="vocab" style="margin-top:24px">
-  <h2>📚 生词学习卡片 <span class="en-sub">New Word Cards</span></h2>
-  <p class="panel-sub">生词定义：目标等级 <strong>HSK{target_num}</strong> 及以上的词汇（含词库未收录的超纲词）均为生词；已过滤低于目标等级的已掌握词汇 {len(filtered_mastered)} 个，仅展示 {len(new_word_items)} 个生词，保证复习的针对性。 / Words at or above the target level (HSK{target_num}) are treated as new words; {len(filtered_mastered)} mastered words below the target level are filtered out.</p>
+  <h2>📚 {_bilingual("生词学习卡片", "New Word Cards")}</h2>
+  <p class="panel-sub">{_bilingual_sub(f"生词定义：目标等级 <strong>HSK{target_num}</strong> 及以上的词汇（含词库未收录的超纲词）均为生词；已过滤低于目标等级的已掌握词汇 {len(filtered_mastered)} 个，仅展示 {len(new_word_items)} 个生词，保证复习的针对性。", f"Words at or above the target level (HSK{target_num}) are treated as new words; {len(filtered_mastered)} mastered words below the target level are filtered out.")}</p>
   <div class="glossary">{''.join(glossary) or '<p>本文暂未匹配到目标等级及以上的词库词语。<br><span class="en-sub">No new HSK vocabulary at or above the target level matched.</span></p>'}</div>
 </section>
 
 <section class="panel" id="sentences" style="margin-top:24px">
-  <h2>✏️ 长难句与篇章观察 <span class="en-sub">Sentence & Discourse Analysis</span></h2>
+  <h2>✏️ {_bilingual("长难句与篇章观察", "Sentence & Discourse Analysis")}</h2>
   <div class="sentence-list">{_sentence_cards(text, issues)}</div>
 </section>
+
+{reference_panel}
 
 <footer>本报告由中文写作评估技能生成：错误定位基于本地规则库与 HSK 1-6 词库；四维度评分量表依据史剑雄、王佶旻（2022）《诊断性写作测试评分量表的构建研究》（语言文字应用 2022年第3期）。可在浏览器中直接打印、保存或下载。<br>
 <span class="en-sub">Generated by Chinese Writing Assessment Skill. Errors detected by local rule engine; four-dimension scale based on Shi &amp; Wang (2022), Language Application, No.3.</span></footer>
@@ -636,5 +695,17 @@ function downloadHtml() {{
   a.click();
   URL.revokeObjectURL(a.href);
 }}
+/* 半隐藏英文：点击 EN 徽章展开/收起 */
+document.querySelectorAll('.en-toggle').forEach(function (btn) {{
+  btn.addEventListener('click', function () {{
+    var sub = btn.nextElementSibling;
+    while (sub && !(sub.classList && sub.classList.contains('en-sub'))) {{ sub = sub.nextElementSibling; }}
+    if (sub) {{
+      var show = sub.hidden;
+      sub.hidden = !show;
+      btn.classList.toggle('active', show);
+    }}
+  }});
+}});
 </script>
 </body></html>'''
